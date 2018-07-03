@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH -J smectic4b
+#SBATCH -o smectic4b.%j.out
+#SBATCH --partition=compute
+#SBATCH --nodes=3
+#SBATCH --ntasks-per-node=24
+#SBATCH --mem=120G
+#SBATCH --export=ALL
+#SBATCH -t 48:00:00
+#SBATCH -A umn120
+
+echo "-------------------------------------------------------------------------"
+echo "Environment for building and running applications with Intel compiler and MPI"
+
+# Reset modules to base state
+#module purge
+
+#Load modules for Intel & MPI
+module load gnutools
+module load intel/2016.3.210 mvapich2_ib
+module load fftw
+#module list
+#cd /oasis/scratch/comet/evitral/temp_project/dct1024/
+
+echo " "
+echo "-------------------------------------------------------------------------"
+echo "Application with double precision MPI parallel FFTW 3.3"
+export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
+export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
+mpicxx -I $BUILD/include -O2 -o cosNoAdvTrackBump cosNoAdvTrackBump.cpp -L $BUILD/lib $LIBS
+ibrun -np 64 ./cosNoAdvTrackBump > box4/saveBump/result.out
