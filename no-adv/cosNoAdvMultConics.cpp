@@ -94,9 +94,7 @@ int main(void) {
 
 /* Indices and mpi related numbers */
 
-	int i, j, k, index, i_local,  size;
-
-	long long rank;
+	int i, j, k, index, i_local, rank, size;
 
 /* Fourier space doubles */
 
@@ -110,36 +108,36 @@ int main(void) {
 
 /* Ints and doubles for surface info */
 
-	int index1, index2, track, k2;
+	int index1, index2, track, i2, j2, k2;
 
 	double psiDxy, psiDxz, psiDyz, gradVal;
 	
 /* Load/save parameters */
 
-	int load = 0;  // (load YES == 1)
+	int load = 1;  // (load YES == 1)
 
 	int swtPsi = 0;  // (switch: psi.dat/psiB.dat)
 
 	std::string strPsi = "psi";
 
-	std::string strLoad = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/save/";
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/dct1024/mult-conics-e0d8/save/";
 	
 	std::ofstream psiMid_output, surf_output, velS_output, curvH_output, curvK_output;
 
-	std::string strBox = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/";
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/dct1024/mult-conics-e0d8/";
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 1024, Ny = 1024, Nz = 1024;
+	const ptrdiff_t Nx = 1024, Ny = 512, Nz = 512;
 	const ptrdiff_t NG = Nx*Ny*Nz;
 
 	ptrdiff_t alloc_local, local_n0, local_0_start;
 
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
-	const double mid = Nx/2; 
-	const double aE = 800; // 270 (FC) // 80 // 312 // 432 // 248 // 810
-	const double bE = 800; // 270 (FC) // 86 // 376 // 520 // 248 // 810
+	const double mid = Nx/4; 
+	const double aE = 405; // 270 (FC) // 80 // 312 // 432 // 248 // 810
+	const double bE = 405; // 270 (FC) // 86 // 376 // 520 // 248 // 810
 
 	double xs, ys, zs, ds;
 
@@ -148,7 +146,7 @@ int main(void) {
 	const double gamma =  1.0;
 	const double beta  =  2.0;
 	const double alpha =  1.0;
-	const double ep    = -0.83; // -0.7 CHANGED !!!!!!!!!!!!!!
+	const double ep    = -0.8; // -0.7 CHANGED !!!!!!!!!!!!!!
 	const double q0    =  1.0;
 	const double q02   = q0*q0;
 
@@ -193,7 +191,6 @@ int main(void) {
 	double alloc_surf = local_n0*Ny;
 
 	double alloc_slice = local_n0*Nz;
-
 	
 /* Check: np should divide evenly into Nx, Ny and Nz */
 
@@ -407,19 +404,26 @@ int main(void) {
 	
 ********************************************/
 
-
 	for ( i_local = 0; i_local < local_n0; i_local++ ) 
 	{
 		i = i_local + local_0_start;
-
+		
 		for ( j = 0; j < Ny; j++ ) {
 		for ( k = 0; k < Nz; k++ ) 
 		{	
 			index = (i_local*Ny + j) * Nz + k;
+
+			// 1024 x 1024 x 512
+			// if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}
+			// 1024 x 512 x 512
+			if (i >= Nx/2) { i2 = i - Nx/2; j2 = j;}
+
+			else { i2 = i; j2 = j ;}
+			
 			if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
 			{		
-				xs = i - mid;
-				ys = j - mid;
+				xs = i2 - mid;
+				ys = j2 - mid;
 				// zs = k + mid*3/4; 
 				zs = k;
 				// zs = k-mid for hyperboloid in the middle

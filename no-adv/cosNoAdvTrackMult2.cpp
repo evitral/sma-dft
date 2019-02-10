@@ -1,5 +1,5 @@
 /********************************************
- *                                          *
+ *              COPY                        *
  *        cosNoAdvTrackMult.cpp             *
  *                                          *
  *     SmecticA 3D Phase Field              *
@@ -94,9 +94,7 @@ int main(void) {
 
 /* Indices and mpi related numbers */
 
-	int i, j, k, index, i_local,  size;
-
-	long long rank;
+	int i, j, k, index, i_local, rank, size;
 
 /* Fourier space doubles */
 
@@ -122,15 +120,15 @@ int main(void) {
 
 	std::string strPsi = "psi";
 
-	std::string strLoad = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/save/";
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/dct1024/no-adv-e0d83-r310/save/";
 	
 	std::ofstream psiMid_output, surf_output, velS_output, curvH_output, curvK_output;
 
-	std::string strBox = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/";
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/dct1024/no-adv-e0d83-r310/";
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 1024, Ny = 1024, Nz = 1024;
+	const ptrdiff_t Nx = 512, Ny = 512, Nz = 512;
 	const ptrdiff_t NG = Nx*Ny*Nz;
 
 	ptrdiff_t alloc_local, local_n0, local_0_start;
@@ -138,8 +136,8 @@ int main(void) {
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
 	const double mid = Nx/2; 
-	const double aE = 800; // 270 (FC) // 80 // 312 // 432 // 248 // 810
-	const double bE = 800; // 270 (FC) // 86 // 376 // 520 // 248 // 810
+	const double aE = 310; // 270 (FC) // 80 // 312 // 432 // 248 // 810
+	const double bE = 310; // 270 (FC) // 86 // 376 // 520 // 248 // 810
 
 	double xs, ys, zs, ds;
 
@@ -193,7 +191,6 @@ int main(void) {
 	double alloc_surf = local_n0*Ny;
 
 	double alloc_slice = local_n0*Nz;
-
 	
 /* Check: np should divide evenly into Nx, Ny and Nz */
 

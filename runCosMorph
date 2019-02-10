@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH -J smectic4b
-#SBATCH -o smectic4b.%j.out
+#SBATCH -J noadve0d85a400b500
+#SBATCH -o noadve0d85a400b500.%j.out
 #SBATCH --partition=compute
-#SBATCH --nodes=3
-#SBATCH --ntasks-per-node=24
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=16
 #SBATCH --mem=120G
 #SBATCH --export=ALL
 #SBATCH -t 48:00:00
@@ -20,12 +20,12 @@ module load gnutools
 module load intel/2016.3.210 mvapich2_ib
 module load fftw
 #module list
-#cd /oasis/scratch/comet/evitral/temp_project/dct1024/
+#cd /home/evitral/sma-dft/no-adv/
 
 echo " "
 echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -I $BUILD/include -O2 -o cosNoAdvTrackBump cosNoAdvTrackBump.cpp -L $BUILD/lib $LIBS
-ibrun -np 64 ./cosNoAdvTrackBump > box4/saveBump/result.out
+mpicxx -I $BUILD/include -O3 -o no-adv/cosNoAdvTrackMult no-adv/cosNoAdvTrackMult.cpp -L $BUILD/lib $LIBS
+ibrun -np 32 ./no-adv/cosNoAdvTrackMult > /oasis/scratch/comet/evitral/temp_project/dct1024/no-adv-e0d85-a400-b500/result.out

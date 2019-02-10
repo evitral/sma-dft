@@ -86,7 +86,7 @@ double wallPotential(int z)
  *                                          *
  *******************************************/    
 
-int main(void) {
+int main(int argc, char* argv[]) {
 
 /* FFTW plans */
 
@@ -100,7 +100,7 @@ int main(void) {
 
 /* Fourier space doubles */
 
-	double mq2, opSH;
+	double opSH;
 
 /* L1 related doubles + output */
 
@@ -116,21 +116,25 @@ int main(void) {
 	
 /* Load/save parameters */
 
-	int load = 0;  // (load YES == 1)
+	int load = atof(argv[4]);  // (load YES == 1)
 
 	int swtPsi = 0;  // (switch: psi.dat/psiB.dat)
 
 	std::string strPsi = "psi";
 
-	std::string strLoad = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/save/";
+	std::string strLoad = "/home/vinals/vitra002/smectic/results/noadv-con-e0d";
 	
+	strLoad += argv[1] + std::string("-r") + argv[2] + std::string("/save/");
+
 	std::ofstream psiMid_output, surf_output, velS_output, curvH_output, curvK_output;
 
-	std::string strBox = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/";
+	std::string strBox = "/home/vinals/vitra002/smectic/results/noadv-con-e0d";
+
+	strBox += argv[1] + std::string("-r") + argv[2] + std::string("/");
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 1024, Ny = 1024, Nz = 1024;
+	const ptrdiff_t Nx = atof(argv[3]), Ny = atof(argv[3]), Nz = atof(argv[3]);
 	const ptrdiff_t NG = Nx*Ny*Nz;
 
 	ptrdiff_t alloc_local, local_n0, local_0_start;
@@ -138,8 +142,8 @@ int main(void) {
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
 	const double mid = Nx/2; 
-	const double aE = 800; // 270 (FC) // 80 // 312 // 432 // 248 // 810
-	const double bE = 800; // 270 (FC) // 86 // 376 // 520 // 248 // 810
+	const double aE = atof(argv[2]); // 270 (FC) // 80 // 312 // 432 // 248 // 810
+	const double bE = atof(argv[2]); // 270 (FC) // 86 // 376 // 520 // 248 // 810
 
 	double xs, ys, zs, ds;
 
@@ -148,7 +152,8 @@ int main(void) {
 	const double gamma =  1.0;
 	const double beta  =  2.0;
 	const double alpha =  1.0;
-	const double ep    = -0.83; // -0.7 CHANGED !!!!!!!!!!!!!!
+	double ep_arg    = atof(argv[1]); // -0.7 CHANGED !!!!!!!!!!!!!!
+	const double ep = -0.01*ep_arg;
 	const double q0    =  1.0;
 	const double q02   = q0*q0;
 
@@ -239,6 +244,7 @@ int main(void) {
 	std::vector<double> aLin(alloc_local);
 	std::vector<double> C1(alloc_local);
 	std::vector<double> C2(alloc_local);
+	std::vector<double> mq2(alloc_local);
 	std::vector<double> psi_local(alloc_local);
 	std::vector<double> psiq_local(alloc_local);
 	std::vector<double> psiNew_local(alloc_local);
@@ -638,9 +644,9 @@ int main(void) {
 	for ( k = 0; k < Nz; k++ )
 	{
 		index =  (i_local*Ny + j)*Nz + k;
-		mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
-		opSH = alpha*pow(mq2-q02,2);
-		aLin[index] = ep - opSH; ;
+		mq2[index] = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
+		opSH = alpha*pow(mq2[index]-q02,2);
+		aLin[index] = mq2[index]*(ep - opSH); ;
 		C1[index] = (1.0+dtd2*aLin[index]);
 		C2[index] = (1.0-dtd2*aLin[index]);
 
@@ -676,6 +682,22 @@ int main(void) {
 /* Move Nr_local to Fourier Space */
 
 	fftw_execute(planN);
+
+
+	// Compute Nr adding the substrate penalty * wall potential
+	for ( i_local = 0; i_local < local_n0; i_local++ ){
+		
+	i = i_local + local_0_start;
+
+	for ( j = 0; j < Ny; j++ ) {
+	for ( k = 0; k < Nz; k++ )
+	{
+	  index =  (i_local*Ny + j)*Nz + k;
+	  
+	  Nq_local[index] = mq2[index]*Nq_local[index];
+	}}}
+
+
 
 /********************************************
  *                                          *
@@ -784,21 +806,36 @@ int main(void) {
 		{
 			index =  (i_local*Ny + j)*Nz + k;
 
-if (countSave==9){
-
-			dTpsi_local[index] = scale*(aLin[index]*psiq_local[index]+Nq_local[index]);
-			
-			psiDxx_local[index] = -scale*Vqx[i_local]*Vqx[i_local]*psiq_local[index];
-		
-			psiDyy_local[index] = -scale*Vqy[j]*Vqy[j]*psiq_local[index];
-		
-			psiDzz_local[index] = -scale*Vqz[k]*Vqz[k]*psiq_local[index];
-
-}
+			Nq_local[index] = mq2[index]*Nq_local[index];
 
 			psiq_local[index] = scale*(C1[index]*psiq_local[index]
 			+ dtd2*(3.0*Nq_local[index]-NqPast_local[index]))/C2[index];
 		}}}	
+
+
+		if (countSave==9){
+
+		  for ( i_local = 0; i_local < local_n0; i_local++ ){
+		
+		  i = i_local + local_0_start;
+
+		  for ( j = 0; j < Ny; j++ ) {
+		  for ( k = 0; k < Nz; k++ )
+		  {
+		    index =  (i_local*Ny + j)*Nz + k;
+		    		    
+		    dTpsi_local[index] = scale*mq2[index]
+		      *(aLin[index]*psiq_local[index]+Nq_local[index]);
+			
+		    psiDxx_local[index] = -scale*Vqx[i_local]
+		      *Vqx[i_local]*psiq_local[index];
+		
+		    psiDyy_local[index] = -scale*Vqy[j]*Vqy[j]*psiq_local[index];
+		
+		    psiDzz_local[index] = -scale*Vqz[k]*Vqz[k]*psiq_local[index];
+
+		  }}}
+		}	
 
 /* Obtain new psi in real space */
 

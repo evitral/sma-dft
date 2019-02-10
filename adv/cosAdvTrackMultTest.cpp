@@ -1,6 +1,6 @@
 /********************************************
  *                                          *
- *         cosAdvTrackMult.cpp              *
+ *         cosAdvTrackMultTest.cpp          *
  *                                          *
  *     SmecticA 3D Phase Field              *
  *     FFTW in parallel                     *
@@ -9,6 +9,10 @@
  *     Curv: Save curvatures after X steps  *
  *     Mult: Better parallelization         *
  *     in terms of memory usage             *                         
+ *     Test: this one has the correct       *
+ *     operations for sin/cos transforms.   *
+ *     It is only for testing and           *
+ *     reference, don't mess with it!       *
  *                                          *
  *     Last mod: 12/07/2018                 *
  *     Author: Eduardo Vitral               *
@@ -167,7 +171,7 @@ int main(int argc, char* argv[]) {
 	const double gamma =  1.0;
 	const double beta  =  2.0;
 	const double alpha =  1.0;
-	double ep_arg    = atof(argv[2]); 
+	double ep_arg    = atof(argv[2]); // -0.7 CHANGED !!!!!!!!!!!!!!
 	const double ep = -0.01*ep_arg;
 	const double q0    =  1.0;
 	const double q02   = q0*q0;
@@ -625,8 +629,8 @@ int main(int argc, char* argv[]) {
 	  {	
 	    index = (i_local*Ny + j) * Nz + k;
 	    psidata >> psi_local[index];
+	  }
 	  }}
-	}
 
 	psidata.close();
 
@@ -820,8 +824,9 @@ int main(int argc, char* argv[]) {
   *                                          *
   *******************************************/
 
-	 //for(int tst=0;tst < 10;tst++) 
-	 while (L1 > limL1)
+ //	while ( countL1 < 0 )
+//	 while (L1 > limL1)
+	 for (int tst = 0; tst < 10; tst++)
 	 {
 
 	   countL1++;
@@ -1297,9 +1302,9 @@ int main(int argc, char* argv[]) {
 	     index =  (i_local*Ny + j)*Nz + k;
 	     Nr_local[index] = beta*pow(psi_local[index],3)
 	       - gamma*pow(psi_local[index],5)
-	       - velx_local[index]*psiGradx_local[index]
-	       - vely_local[index]*psiGrady_local[index]
-	       - velz_local[index]*psiGradz_local[index];
+	       - Sx_local[index]*psiGradx_local[index]
+	       - Sy_local[index]*psiGrady_local[index]
+	       - Sz_local[index]*psiGradz_local[index];
 	   }}}
 
 	   /* Obtain current Nq_local */
@@ -1308,7 +1313,7 @@ int main(int argc, char* argv[]) {
 
 	   /* COMPUTE: SECOND DERIVATIVES AND PF VELOCITY */
 
-	   if (countL1 == 100 & countSave == 9) {
+	   if (countL1 == 1 & countSave == 0) {
 
 	     for ( i_local = 0; i_local < local_n0; i_local++ ){
 
@@ -1346,71 +1351,71 @@ int main(int argc, char* argv[]) {
 
 	   }
 
-	   // if (tst == 0){
-	   //   NqPast_local = Nq_local;
-	   //}
+		 if (tst == 0){
+		   NqPast_local = Nq_local;
+		 }
 
-	   /* COMPUTE: NEW PSI IN FOURIER SPACE (CN/AB scheme) */
+		 /* COMPUTE: NEW PSI IN FOURIER SPACE (CN/AB scheme) */
 
-	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+		 for ( i_local = 0; i_local < local_n0; i_local++ ){
 
-	   for ( j = 0; j < Ny; j++ ) {
-	   for ( k = 0; k < Nz; k++ )
-	   {
-	     index =  (i_local*Ny + j)*Nz + k;
+		 for ( j = 0; j < Ny; j++ ) {
+		 for ( k = 0; k < Nz; k++ )
+		 {
+		   index =  (i_local*Ny + j)*Nz + k;
 
-	     psiq_local[index] = 
-	       (C1[index]*psiq_local[index]
-		+ dtd2*scale*(3.0*Nq_local[index]-NqPast_local[index]))/C2[index];
-	   }}}	
+		   psiq_local[index] = 
+		     (C1[index]*psiq_local[index]
+		      + dtd2*scale*(3.0*Nq_local[index]-NqPast_local[index]))/C2[index];
+		 }}}	
 		 
-	   /** Obtain new psi in real space **/
+		 /** Obtain new psi in real space **/
 
-	   fftw_execute(iPlanPsi);
+		 fftw_execute(iPlanPsi);
 
 		 
-	   /* COMPUTE: L1 (under count condition) */
+		 /* COMPUTE: L1 (under count condition) */
 		 
-	   if ( countL1 == 100 )
-	   {
+		 if ( countL1 == 1 )
+		 {
 
-	     sumA_local = 0.0; sumB_local = 0.0;
-	     sumA = 0.0;       sumB = 0.0;
+		 sumA_local = 0.0; sumB_local = 0.0;
+		 sumA = 0.0;       sumB = 0.0;
 
-	     for ( i_local = 0; i_local < local_n0; i_local++ ) {
-	     for ( j = 0; j < Ny; j++ ) {
-	     for ( k = 0; k < Nz; k++ )
-	     {
-	       index = (i_local*Ny + j) * Nz + k;
+		 for ( i_local = 0; i_local < local_n0; i_local++ ) {
+		 for ( j = 0; j < Ny; j++ ) {
+		 for ( k = 0; k < Nz; k++ )
+		 {
+		   index = (i_local*Ny + j) * Nz + k;
 		   
-	       sumA_local = sumA_local  
-		 + fabs(psiNew_local[index] - psi_local[index]);
+		   sumA_local = sumA_local  
+		     + fabs(psiNew_local[index] - psi_local[index]);
 		     
-	       sumB_local = sumB_local + fabs(psiNew_local[index]);
-	     }}}
+		   sumB_local = sumB_local + fabs(psiNew_local[index]);
+		 }}}
 
-	     MPI::COMM_WORLD.Reduce(&sumA_local,&sumA,1,MPI::DOUBLE,MPI::SUM,0);
-	     MPI::COMM_WORLD.Reduce(&sumB_local,&sumB,1,MPI::DOUBLE,MPI::SUM,0);
+		 MPI::COMM_WORLD.Reduce(&sumA_local,&sumA,1,MPI::DOUBLE,MPI::SUM,0);
+		 MPI::COMM_WORLD.Reduce(&sumB_local,&sumB,1,MPI::DOUBLE,MPI::SUM,0);
 
-	     if ( rank == 0)
-	     {
-	       L1 = sumA/(dt*sumB);
-	       L1_output.open(strBox+"L1.dat",std::ios_base::app); // append result
-	       assert(L1_output.is_open());
-	       L1_output << L1 << "\n";
-	       L1_output.close();
-	     }
+		 if ( rank == 0)
+		 {
+		   L1 = sumA/(dt*sumB);
+		   L1_output.open(strBox+"L1.dat",std::ios_base::app); // append result
+		   assert(L1_output.is_open());
+		   L1_output << L1 << "\n";
+		   L1_output.close();
+		 }
 
-	     MPI::COMM_WORLD.Bcast(&L1,1,MPI::DOUBLE,0);
+		 MPI::COMM_WORLD.Bcast(&L1,1,MPI::DOUBLE,0);
 
-	     countL1 = 0;
+		 countL1 = 0;
 
-	     countSave++;
+		 countSave++;
 
-	     /* SAVE PSI & OBTAIN SURFACE INFO (under count condition) */
+		 /* SAVE PSI & OBTAIN SURFACE INFO (under count condition) */
 
-	     if ( countSave == 10 )
-	     { 
+		 if ( countSave == 1 )
+		 { 
 			 			 
 		 /** Appropriate way to compute curvatures for a TFCD **/
 

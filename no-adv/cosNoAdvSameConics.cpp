@@ -86,7 +86,7 @@ double wallPotential(int z)
  *                                          *
  *******************************************/    
 
-int main(void) {
+int main(int argc, char* argv[]) {
 
 /* FFTW plans */
 
@@ -110,36 +110,40 @@ int main(void) {
 
 /* Ints and doubles for surface info */
 
-	int index1, index2, track, k2;
+	int index1, index2, track, i2, j2, k2;
 
 	double psiDxy, psiDxz, psiDyz, gradVal;
 	
 /* Load/save parameters */
 
-	int load = 0;  // (load YES == 1)
+	int load = atof(argv[4]);  // (load YES == 1)
 
 	int swtPsi = 0;  // (switch: psi.dat/psiB.dat)
 
 	std::string strPsi = "psi";
 
-	std::string strLoad = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/save/";
+	std::string strLoad = "/home/vinals/vitra002/smectic/results/no-adv2-e0d";
 	
+	strLoad += argv[1] + std::string("-r") + argv[2] + std::string("/save/");
+
 	std::ofstream psiMid_output, surf_output, velS_output, curvH_output, curvK_output;
 
-	std::string strBox = "/home/vinals/vitra002/smectic/results/no-adv-e0d83-r800/";
+	std::string strBox = "/home/vinals/vitra002/smectic/results/no-adv2-e0d";
+
+	strBox += argv[1] + std::string("-r") + argv[2] + std::string("/");
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 1024, Ny = 1024, Nz = 1024;
+	const ptrdiff_t Nx = 1024, Ny = 512, Nz = 512;
 	const ptrdiff_t NG = Nx*Ny*Nz;
 
 	ptrdiff_t alloc_local, local_n0, local_0_start;
 
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
-	const double mid = Nx/2; 
-	const double aE = 800; // 270 (FC) // 80 // 312 // 432 // 248 // 810
-	const double bE = 800; // 270 (FC) // 86 // 376 // 520 // 248 // 810
+	const double mid = Ny/2; 
+	const double aE = atof(argv[2]); // 270 (FC) // 80 // 312 // 432 // 248 // 810
+	const double bE = atof(argv[2]); // 270 (FC) // 86 // 376 // 520 // 248 // 810
 
 	double xs, ys, zs, ds;
 
@@ -148,7 +152,8 @@ int main(void) {
 	const double gamma =  1.0;
 	const double beta  =  2.0;
 	const double alpha =  1.0;
-	const double ep    = -0.83; // -0.7 CHANGED !!!!!!!!!!!!!!
+	double ep_arg    = atof(argv[1]); 
+	const double ep = -0.01*ep_arg;
 	const double q0    =  1.0;
 	const double q02   = q0*q0;
 
@@ -408,53 +413,61 @@ int main(void) {
 ********************************************/
 
 
-	for ( i_local = 0; i_local < local_n0; i_local++ ) 
-	{
-		i = i_local + local_0_start;
+	for ( i_local = 0; i_local < local_n0; i_local++ )
+	  {
+	    i = i_local + local_0_start;
 
-		for ( j = 0; j < Ny; j++ ) {
-		for ( k = 0; k < Nz; k++ ) 
-		{	
-			index = (i_local*Ny + j) * Nz + k;
-			if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-			{		
-				xs = i - mid;
-				ys = j - mid;
-				// zs = k + mid*3/4; 
-				zs = k;
-				// zs = k-mid for hyperboloid in the middle
-				// zs = k for hyperboloid in the botton
-				ds = sqrt(xs*xs+ys*ys);
-				if (ds < mid)
-				{
-					if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-					{
-						psi_local[index] = 0.0;
-					}
-					else
-					{
-						psi_local[index] = Amp*cos(q0*dz*
-						sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-					}
-				}
-				else
-				{
-					if (abs(zs) < bE)
-					{
-						psi_local[index] = Amp*cos(q0*zs*dz);
-					}
-					else
-					{
-						psi_local[index] = 0.0;
-					}
-				}		 
-			}
-			else
-			{
-				psi_local[index] = 0.0;
-			}
-		}}
-	} // close IC assign
+	    for ( j = 0; j < Ny; j++ ) {
+	    for ( k = 0; k < Nz; k++ )
+	    {
+	      index = (i_local*Ny + j) * Nz + k;
+
+	      // 1024 x 1024 x 512                                            
+	      // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
+	      // 1024 x 512 x 512                                             
+	      if (i >= Nx/2) { i2 = i - Nx/2; j2 = j;}
+	      
+	      else { i2 = i; j2 = j ;}
+
+	      if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450               
+	      {
+		xs = i2 - mid;
+		ys = j2 - mid;
+		// zs = k + mid*3/4;                                    
+		zs = k;
+		// zs = k-mid for hyperboloid in the middle             
+		// zs = k for hyperboloid in the botton                 
+		ds = sqrt(xs*xs+ys*ys);
+		if (ds < mid)
+		{
+		  if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+		  {
+		    psi_local[index] = 0.0;
+		  }
+		  else
+		  {
+		    psi_local[index] = Amp*cos(q0*dz*
+			      sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+		  }
+		}
+		else
+		{
+		  if (abs(zs) < bE)
+		  {
+		    psi_local[index] = Amp*cos(q0*zs*dz);
+		  }
+		  else
+		  {
+		    psi_local[index] = 0.0;
+		  }
+		}
+	      }
+	      else
+	      {
+		psi_local[index] = 0.0;
+	      }
+	    }}
+	  } // close IC assign     
 
 
 /* Output IC to file and create L1 output */
@@ -784,17 +797,17 @@ int main(void) {
 		{
 			index =  (i_local*Ny + j)*Nz + k;
 
-if (countSave==9){
+// if (countSave==9){
 
-			dTpsi_local[index] = scale*(aLin[index]*psiq_local[index]+Nq_local[index]);
+// 			dTpsi_local[index] = scale*(aLin[index]*psiq_local[index]+Nq_local[index]);
 			
-			psiDxx_local[index] = -scale*Vqx[i_local]*Vqx[i_local]*psiq_local[index];
+// 			psiDxx_local[index] = -scale*Vqx[i_local]*Vqx[i_local]*psiq_local[index];
 		
-			psiDyy_local[index] = -scale*Vqy[j]*Vqy[j]*psiq_local[index];
+// 			psiDyy_local[index] = -scale*Vqy[j]*Vqy[j]*psiq_local[index];
 		
-			psiDzz_local[index] = -scale*Vqz[k]*Vqz[k]*psiq_local[index];
+// 			psiDzz_local[index] = -scale*Vqz[k]*Vqz[k]*psiq_local[index];
 
-}
+// }
 
 			psiq_local[index] = scale*(C1[index]*psiq_local[index]
 			+ dtd2*(3.0*Nq_local[index]-NqPast_local[index]))/C2[index];
@@ -850,82 +863,82 @@ if (countSave==9){
 			if ( countSave == 10 )
 			{
 
-			fftw_execute(iPlanPsiDxx);
-			fftw_execute(iPlanPsiDyy);
-			fftw_execute(iPlanPsiDzz);
+	// 		fftw_execute(iPlanPsiDxx);
+	// 		fftw_execute(iPlanPsiDyy);
+	// 		fftw_execute(iPlanPsiDzz);
 
-			fftw_execute(iPlanDTpsi);
+	// 		fftw_execute(iPlanDTpsi);
 	
-	    /** Compute gradient of psi **/
+	//     /** Compute gradient of psi **/
 		
-	for( k = 0; k < Nz ; k++ ){
-	for( j = 0; j < Ny ; j++ ){
-	for( i_local = 0; i_local < local_n0 ; i_local++ ){
-		index  = (i_local*Ny +j)*Nz + k;
-		index2 = i_local*Ny + j;
-		surfZ_local[index2] = psi_local[index];
-		}}
+	// for( k = 0; k < Nz ; k++ ){
+	// for( j = 0; j < Ny ; j++ ){
+	// for( i_local = 0; i_local < local_n0 ; i_local++ ){
+	// 	index  = (i_local*Ny +j)*Nz + k;
+	// 	index2 = i_local*Ny + j;
+	// 	surfZ_local[index2] = psi_local[index];
+	// 	}}
 
-	    MPI::COMM_WORLD.Gather(surfZ_local.data(),alloc_surf,MPI::DOUBLE,
-					   surfZ.data(),alloc_surf, MPI::DOUBLE,0);
+	//     MPI::COMM_WORLD.Gather(surfZ_local.data(),alloc_surf,MPI::DOUBLE,
+	// 				   surfZ.data(),alloc_surf, MPI::DOUBLE,0);
 
-		if( rank == 0 ){
-			for( i = 1 ; i < Nx-1 ; i++){
-			for( j = 0 ; j < Ny   ; j++){
-				index = i*Ny + j;
-				index1 = index-Ny;
-				index2 = index+Ny;
-				psiGradxSlice[index] = (surfZ[index2]-surfZ[index1])/tdx;
-			}}
-			for( j = 0 ; j < Ny ; j++){
-				index = j;
-				index2 = index + Ny;
-				psiGradxSlice[index] = 2*(surfZ[index2]-surfZ[index])/tdx;
+	// 	if( rank == 0 ){
+	// 		for( i = 1 ; i < Nx-1 ; i++){
+	// 		for( j = 0 ; j < Ny   ; j++){
+	// 			index = i*Ny + j;
+	// 			index1 = index-Ny;
+	// 			index2 = index+Ny;
+	// 			psiGradxSlice[index] = (surfZ[index2]-surfZ[index1])/tdx;
+	// 		}}
+	// 		for( j = 0 ; j < Ny ; j++){
+	// 			index = j;
+	// 			index2 = index + Ny;
+	// 			psiGradxSlice[index] = 2*(surfZ[index2]-surfZ[index])/tdx;
 
-				index = (Nx-1)*Ny + j;
-				index1 = index - Ny;
-				psiGradxSlice[index] = 2*(surfZ[index]-surfZ[index1])/tdx;
-			}			
-		}
+	// 			index = (Nx-1)*Ny + j;
+	// 			index1 = index - Ny;
+	// 			psiGradxSlice[index] = 2*(surfZ[index]-surfZ[index1])/tdx;
+	// 		}			
+	// 	}
 
-		MPI::COMM_WORLD.Barrier();
+	// 	MPI::COMM_WORLD.Barrier();
 		
-		MPI::COMM_WORLD.Scatter(psiGradxSlice.data(),alloc_surf,MPI::DOUBLE,
-	    	     		       surfZ_local.data(),alloc_surf, MPI::DOUBLE,0);
+	// 	MPI::COMM_WORLD.Scatter(psiGradxSlice.data(),alloc_surf,MPI::DOUBLE,
+	//     	     		       surfZ_local.data(),alloc_surf, MPI::DOUBLE,0);
 
-		for( j = 0; j < Ny ; j++ ){
-		for( i_local = 0; i_local < local_n0 ; i_local++ ){
-			index  = (i_local*Ny +j)*Nz + k;
-			index2 = i_local*Ny + j;
-			psiGradx_local[index] = surfZ_local[index2];
-		}}
+	// 	for( j = 0; j < Ny ; j++ ){
+	// 	for( i_local = 0; i_local < local_n0 ; i_local++ ){
+	// 		index  = (i_local*Ny +j)*Nz + k;
+	// 		index2 = i_local*Ny + j;
+	// 		psiGradx_local[index] = surfZ_local[index2];
+	// 	}}
 		
-	}
+	// }
 
-		/** Compute psiGrady;z locally  **/
+	// 	/** Compute psiGrady;z locally  **/
 
-		for ( i_local = 0; i_local < local_n0; i_local++ ){
-		for ( j = 0; j < Ny; j++ ) {
-		for ( k = 0; k < Nz; k++ ) 
-		{
-			index =  (i_local*Ny + j)*Nz + k;
-			index1 = (i_local*Ny + (j-1))*Nz + k;
-			index2 = (i_local*Ny + (j+1))*Nz + k;
-			if ((j!=0) && (j!=Ny-1)){ 
-				psiGrady_local[index] = (psi_local[index2]-psi_local[index1])/tdy;
-			} else if (j==0){ 
-				psiGrady_local[index] = 2*(psi_local[index2]-psi_local[index])/tdy;
-			} else {
-			  	psiGrady_local[index] = 2*(psi_local[index]-psi_local[index1])/tdy;
-			}
-			if ((k!=0) && (k!=Nz-1)){
-				psiGradz_local[index] = (psi_local[index+1]-psi_local[index-1])/tdz;
-			} else if(k==0){ 
-				psiGradz_local[index] = 2*(psi_local[index+1]-psi_local[index])/tdz; 
-			} else {
-				psiGradz_local[index] = 2*(psi_local[index]-psi_local[index-1])/tdz;
-			}
-		}}}
+	// 	for ( i_local = 0; i_local < local_n0; i_local++ ){
+	// 	for ( j = 0; j < Ny; j++ ) {
+	// 	for ( k = 0; k < Nz; k++ ) 
+	// 	{
+	// 		index =  (i_local*Ny + j)*Nz + k;
+	// 		index1 = (i_local*Ny + (j-1))*Nz + k;
+	// 		index2 = (i_local*Ny + (j+1))*Nz + k;
+	// 		if ((j!=0) && (j!=Ny-1)){ 
+	// 			psiGrady_local[index] = (psi_local[index2]-psi_local[index1])/tdy;
+	// 		} else if (j==0){ 
+	// 			psiGrady_local[index] = 2*(psi_local[index2]-psi_local[index])/tdy;
+	// 		} else {
+	// 		  	psiGrady_local[index] = 2*(psi_local[index]-psi_local[index1])/tdy;
+	// 		}
+	// 		if ((k!=0) && (k!=Nz-1)){
+	// 			psiGradz_local[index] = (psi_local[index+1]-psi_local[index-1])/tdz;
+	// 		} else if(k==0){ 
+	// 			psiGradz_local[index] = 2*(psi_local[index+1]-psi_local[index])/tdz; 
+	// 		} else {
+	// 			psiGradz_local[index] = 2*(psi_local[index]-psi_local[index-1])/tdz;
+	// 		}
+	// 	}}}
 					
 	/** Appropriate way to compute curvatures for a TFCD **/
 
@@ -957,65 +970,65 @@ if (countSave==9){
 				}
 				surfZ_local[index2] = k2;
 				
-				gradVal = sqrt(psiGradx_local[index]*psiGradx_local[index]
-					   + psiGrady_local[index]*psiGrady_local[index]
-					   + psiGradz_local[index]*psiGradz_local[index]);
+				// gradVal = sqrt(psiGradx_local[index]*psiGradx_local[index]
+				// 	   + psiGrady_local[index]*psiGrady_local[index]
+				// 	   + psiGradz_local[index]*psiGradz_local[index]);
 				
-				velSurf_local[index2] = dTpsi_local[index]/gradVal;
+				// velSurf_local[index2] = dTpsi_local[index]/gradVal;
 
-				// Mixed second order derivates do not work with the DCT, so...
+				// // Mixed second order derivates do not work with the DCT, so...
 				
-				if( j> 0 & j < (Ny-1) )
-				{
-				psiDxy = (psiGradx_local[(i_local*Ny + j+1) * Nz + k2]-psiGradx_local[(i_local*Ny + j-1) * Nz + k2])/tdy;
-				}			
-				if(j==0)
-				{
-				psiDxy = 2*(psiGradx_local[(i_local*Ny + 1) * Nz + k2]-psiGradx_local[(i_local*Ny) * Nz + k2])/tdy;
-				}
-				if(j==Ny-1)
-				{
-				psiDxy = 2*(psiGradx_local[(i_local*Ny + j) * Nz + k2]-psiGradx_local[(i_local*Ny+j-1) * Nz + k2])/tdy;
-				}
+				// if( j> 0 & j < (Ny-1) )
+				// {
+				// psiDxy = (psiGradx_local[(i_local*Ny + j+1) * Nz + k2]-psiGradx_local[(i_local*Ny + j-1) * Nz + k2])/tdy;
+				// }			
+				// if(j==0)
+				// {
+				// psiDxy = 2*(psiGradx_local[(i_local*Ny + 1) * Nz + k2]-psiGradx_local[(i_local*Ny) * Nz + k2])/tdy;
+				// }
+				// if(j==Ny-1)
+				// {
+				// psiDxy = 2*(psiGradx_local[(i_local*Ny + j) * Nz + k2]-psiGradx_local[(i_local*Ny+j-1) * Nz + k2])/tdy;
+				// }
 
-				if(k > 0 & k < (Nz-1) )
-				{
-				psiDxz = (psiGradx_local[index+1]-psiGradx_local[index-1])/tdz;
-				psiDyz = (psiGrady_local[index+1]-psiGrady_local[index-1])/tdz;
-				}			
-				if(k == 0  )
-				{
-				psiDxz = 2*(psiGradx_local[index+1]-psiGradx_local[index])/tdz;
-				psiDyz = 2*(psiGrady_local[index+1]-psiGrady_local[index])/tdz;
-				}
-				if(k == (Nz-1) )
-				{
-				psiDxz = 2*(psiGradx_local[index]-psiGradx_local[index-1])/tdz;
-				psiDyz = 2*(psiGrady_local[index]-psiGrady_local[index-1])/tdz;
-				}
+				// if(k > 0 & k < (Nz-1) )
+				// {
+				// psiDxz = (psiGradx_local[index+1]-psiGradx_local[index-1])/tdz;
+				// psiDyz = (psiGrady_local[index+1]-psiGrady_local[index-1])/tdz;
+				// }			
+				// if(k == 0  )
+				// {
+				// psiDxz = 2*(psiGradx_local[index+1]-psiGradx_local[index])/tdz;
+				// psiDyz = 2*(psiGrady_local[index+1]-psiGrady_local[index])/tdz;
+				// }
+				// if(k == (Nz-1) )
+				// {
+				// psiDxz = 2*(psiGradx_local[index]-psiGradx_local[index-1])/tdz;
+				// psiDyz = 2*(psiGrady_local[index]-psiGrady_local[index-1])/tdz;
+				// }
 				
-				// Proper way to numerically compute H and K
-				// (Megrabov 2014, On divergence representations ..)
-				// Note: I'm obtaining 2H instead of H, but K is okay
+				// // Proper way to numerically compute H and K
+				// // (Megrabov 2014, On divergence representations ..)
+				// // Note: I'm obtaining 2H instead of H, but K is okay
 
 
-				curvH_local[index2] =
-					((pow(psiGrady_local[index],2)+pow(psiGradz_local[index],2))*psiDxx_local[index]
-					 +(pow(psiGradx_local[index],2)+pow(psiGradz_local[index],2))*psiDyy_local[index]
-					 +(pow(psiGradx_local[index],2)+pow(psiGrady_local[index],2))*psiDzz_local[index]
-					 -2*(psiGradx_local[index]*psiGrady_local[index]*psiDxy
-						 +psiGradx_local[index]*psiGradz_local[index]*psiDxz
-						 +psiGrady_local[index]*psiGradz_local[index]*psiDyz))
-					/ pow(gradVal,3);
+				// curvH_local[index2] =
+				// 	((pow(psiGrady_local[index],2)+pow(psiGradz_local[index],2))*psiDxx_local[index]
+				// 	 +(pow(psiGradx_local[index],2)+pow(psiGradz_local[index],2))*psiDyy_local[index]
+				// 	 +(pow(psiGradx_local[index],2)+pow(psiGrady_local[index],2))*psiDzz_local[index]
+				// 	 -2*(psiGradx_local[index]*psiGrady_local[index]*psiDxy
+				// 		 +psiGradx_local[index]*psiGradz_local[index]*psiDxz
+				// 		 +psiGrady_local[index]*psiGradz_local[index]*psiDyz))
+				// 	/ pow(gradVal,3);
 				
-				curvK_local[index2] =
-					(pow(psiGradz_local[index],2)*(psiDxx_local[index]*psiDyy_local[index]-pow(psiDxy,2))
-					 +pow(psiGradx_local[index],2)*(psiDyy_local[index]*psiDzz_local[index]-pow(psiDyz,2))
-					 +pow(psiGrady_local[index],2)*(psiDxx_local[index]*psiDzz_local[index]-pow(psiDxz,2))
-					 +2*(psiGrady_local[index]*psiDxy*(psiGradz_local[index]*psiDxz-psiGradx_local[index]*psiDzz_local[index])
-						 +psiGradx_local[index]*psiDxz*(psiGrady_local[index]*psiDyz-psiGradz_local[index]*psiDyy_local[index])
-						 +psiGradz_local[index]*psiDyz*(psiGradx_local[index]*psiDxy-psiGrady_local[index]*psiDxx_local[index])
-						 ))/pow(gradVal,4);
+				// curvK_local[index2] =
+				// 	(pow(psiGradz_local[index],2)*(psiDxx_local[index]*psiDyy_local[index]-pow(psiDxy,2))
+				// 	 +pow(psiGradx_local[index],2)*(psiDyy_local[index]*psiDzz_local[index]-pow(psiDyz,2))
+				// 	 +pow(psiGrady_local[index],2)*(psiDxx_local[index]*psiDzz_local[index]-pow(psiDxz,2))
+				// 	 +2*(psiGrady_local[index]*psiDxy*(psiGradz_local[index]*psiDxz-psiGradx_local[index]*psiDzz_local[index])
+				// 		 +psiGradx_local[index]*psiDxz*(psiGrady_local[index]*psiDyz-psiGradz_local[index]*psiDyy_local[index])
+				// 		 +psiGradz_local[index]*psiDyz*(psiGradx_local[index]*psiDxy-psiGrady_local[index]*psiDxx_local[index])
+				// 		 ))/pow(gradVal,4);
 
 				track = 2;
 			}
@@ -1025,14 +1038,14 @@ if (countSave==9){
 		MPI::COMM_WORLD.Gather(surfZ_local.data(),alloc_surf,MPI::DOUBLE,
 							   surfZ.data(),alloc_surf, MPI::DOUBLE,0);
 
-		MPI::COMM_WORLD.Gather(velSurf_local.data(),alloc_surf,MPI::DOUBLE,
-							   velSurf.data(),alloc_surf, MPI::DOUBLE,0);
+		// MPI::COMM_WORLD.Gather(velSurf_local.data(),alloc_surf,MPI::DOUBLE,
+		// 					   velSurf.data(),alloc_surf, MPI::DOUBLE,0);
 
-		MPI::COMM_WORLD.Gather(curvH_local.data(),alloc_surf,MPI::DOUBLE,
-							   curvH.data(),alloc_surf, MPI::DOUBLE,0);
+		// MPI::COMM_WORLD.Gather(curvH_local.data(),alloc_surf,MPI::DOUBLE,
+		// 					   curvH.data(),alloc_surf, MPI::DOUBLE,0);
 
-		MPI::COMM_WORLD.Gather(curvK_local.data(),alloc_surf,MPI::DOUBLE,
-							   curvK.data(),alloc_surf, MPI::DOUBLE,0);
+		// MPI::COMM_WORLD.Gather(curvK_local.data(),alloc_surf,MPI::DOUBLE,
+		// 					   curvK.data(),alloc_surf, MPI::DOUBLE,0);
 
 
 		j = Ny/2;
@@ -1063,15 +1076,15 @@ if (countSave==9){
 				{
 
 					surf_output.open(strBox+"surfPsi.dat",std::ios_base::app);
-					velS_output.open(strBox+"velSurf.dat",std::ios_base::app);
-					curvH_output.open(strBox+"curvH.dat",std::ios_base::app);
-					curvK_output.open(strBox+"curvK.dat",std::ios_base::app);
+					// velS_output.open(strBox+"velSurf.dat",std::ios_base::app);
+					// curvH_output.open(strBox+"curvH.dat",std::ios_base::app);
+					// curvK_output.open(strBox+"curvK.dat",std::ios_base::app);
 					psiMid_output.open(strBox+"psiMid.dat",std::ios_base::app);
 					
 					assert(surf_output.is_open());
-					assert(velS_output.is_open());
-					assert(curvH_output.is_open());
-					assert(curvK_output.is_open());
+					// assert(velS_output.is_open());
+					// assert(curvH_output.is_open());
+					// assert(curvK_output.is_open());
 					assert(psiMid_output.is_open());
 
 					for ( i = 0; i < Nx; i++ ) {
@@ -1080,9 +1093,9 @@ if (countSave==9){
 						index = i*Ny + j;
 
 						surf_output << surfZ[index] << "\n";
-						velS_output << velSurf[index] << "\n ";
-						curvH_output << curvH[index] << "\n ";
-						curvK_output << curvK[index] << "\n ";
+						// velS_output << velSurf[index] << "\n ";
+						// curvH_output << curvH[index] << "\n ";
+						// curvK_output << curvK[index] << "\n ";
 					
 					}}
 
@@ -1095,9 +1108,9 @@ if (countSave==9){
 					}}
 
 					surf_output.close();
-					velS_output.close();
-					curvH_output.close();
-					curvK_output.close();	
+					// velS_output.close();
+					// curvH_output.close();
+					// curvK_output.close();	
 					psiMid_output.close();
 
 	

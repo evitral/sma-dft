@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
 
 /* Ints and doubles for surface info */
 
-	int index1, index2, index3, index4, index5, track, k2;
+	int index1, index2, index3, index4, index5, track, i2, j2, k2;
 
 	double psiDxy, psiDxz, psiDyz, gradVal;
 
@@ -130,7 +130,7 @@ int main(int argc, char* argv[]) {
 
 	std::string strPsi = "psi";
 	
-	std::string strLoad = "/home/vinals/vitra002/smectic/results/adv-nu";
+	std::string strLoad = "/home/vinals/vitra002/smectic/results/adv2-nu";
 	
 	strLoad += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-r") + argv[3] + std::string("/save/");
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 	std::ofstream psiMid_output, surf_output, velS_output, 
 	  curvH_output, curvK_output, sx_output, sy_output, sz_output;
 
-	std::string strBox = "/home/vinals/vitra002/smectic/results/adv-nu";
+	std::string strBox = "/home/vinals/vitra002/smectic/results/adv2-nu";
 
 	strBox += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-r") + argv[3] + std::string("/");
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 512, Ny = 512, Nz = 512;
+	const ptrdiff_t Nx = 1024, Ny = 512, Nz = 512;
 	const ptrdiff_t NG = Nx*Ny*Nz;
 	const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
 
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
-	const double mid = Nx/2; 
+	const double mid = Ny/2; 
 	const double aE = atof(argv[3]); // 270 (FC) // 80 // 312 // 432 // 248 // 810
 	const double bE = atof(argv[3]); // 270 (FC) // 86 // 376 // 520 // 248 // 810
 
@@ -492,54 +492,61 @@ int main(int argc, char* argv[]) {
 	
 ********************************************/
 
+	for ( i_local = 0; i_local < local_n0; i_local++ )
+	  {
+	    i = i_local + local_0_start;
 
-	for ( i_local = 0; i_local < local_n0; i_local++ ) 
-	{
-	  i = i_local + local_0_start;
+	    for ( j = 0; j < Ny; j++ ) {
+	    for ( k = 0; k < Nz; k++ )
+	    {
+	      index = (i_local*Ny + j) * Nz + k;
 
-	  for ( j = 0; j < Ny; j++ ) {
-	  for ( k = 0; k < Nz; k++ ) 
-	  {	
-	    index = (i_local*Ny + j) * Nz + k;
-	    if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-	    {		
-	      xs = i - mid;
-	      ys = j - mid;
-	      // zs = k + mid*3/4; 
-	      zs = k;
-	      // zs = k-mid for hyperboloid in the middle
-	      // zs = k for hyperboloid in the botton
-	      ds = sqrt(xs*xs+ys*ys);
-	      if (ds < mid)
+	      // 1024 x 1024 x 512                                            
+	      // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
+	      // 1024 x 512 x 512                                             
+	      if (i >= Nx/2) { i2 = i - Nx/2; j2 = j;}
+	      
+	      else { i2 = i; j2 = j ;}
+
+	      if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450               
 	      {
-		if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+		xs = i2 - mid;
+		ys = j2 - mid;
+		// zs = k + mid*3/4;                                    
+		zs = k;
+		// zs = k-mid for hyperboloid in the middle             
+		// zs = k for hyperboloid in the botton                 
+		ds = sqrt(xs*xs+ys*ys);
+		if (ds < mid)
 		{
-		  psi_local[index] = 0.0;
+		  if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+		  {
+		    psi_local[index] = 0.0;
+		  }
+		  else
+		  {
+		    psi_local[index] = Amp*cos(q0*dz*
+			      sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+		  }
 		}
 		else
 		{
-		  psi_local[index] = Amp*cos(q0*dz*
-					     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+		  if (abs(zs) < bE)
+		  {
+		    psi_local[index] = Amp*cos(q0*zs*dz);
+		  }
+		  else
+		  {
+		    psi_local[index] = 0.0;
+		  }
 		}
 	      }
 	      else
 	      {
-		if (abs(zs) < bE)
-		{
-		  psi_local[index] = Amp*cos(q0*zs*dz);
-		}
-		else
-		{
-		  psi_local[index] = 0.0;
-		}
-	      }		 
-	    }
-	    else
-	      {
 		psi_local[index] = 0.0;
 	      }
-	  }}
-	} // close IC assign
+	    }}
+	  } // close IC assign     
 
 
 /* Output IC to file and create L1 output */
@@ -625,8 +632,8 @@ int main(int argc, char* argv[]) {
 	  {	
 	    index = (i_local*Ny + j) * Nz + k;
 	    psidata >> psi_local[index];
+	  }
 	  }}
-	}
 
 	psidata.close();
 
@@ -734,7 +741,7 @@ int main(int argc, char* argv[]) {
 	   index =  (i_local*Ny + j)*Nz + k;
 	   mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
 	   opSH = alpha*pow(mq2-q02,2);
-	   aLin[index] = ep - opSH; ;
+	   aLin[index] = ep - opSH; 
 	   C1[index] = (1.0+dtd2*aLin[index]);
 	   C2[index] = (1.0-dtd2*aLin[index]);
 	   
@@ -820,7 +827,6 @@ int main(int argc, char* argv[]) {
   *                                          *
   *******************************************/
 
-	 //for(int tst=0;tst < 10;tst++) 
 	 while (L1 > limL1)
 	 {
 
