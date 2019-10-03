@@ -6,9 +6,8 @@
  *     FFTW in parallel                     *
  *     cos: DCT (and also DST!)             *
  *     Adv: Advection is on                 *
- *     Curv: Save curvatures after X steps  *
- *     Mult: Better parallelization         *
- *     in terms of memory usage             *                         
+ *     Density: conserved coupled density   *
+ *     field                                *
  *                                          *
  *     Last mod: 12/07/2018                 *
  *     Author: Eduardo Vitral               *
@@ -90,7 +89,7 @@ int main(int argc, char* argv[]) {
 
 /* FFTW plans */
 
-	fftw_plan planPsi, iPlanPsi, planN,
+  fftw_plan planPsi, iPlanPsi, planN, planCT,
 	  planSTx, planSTy, planSTz, iPlanSTx, iPlanSTy, iPlanSTz, iPlanCT;
 		// iPlanPsiDxx, iPlanPsiDyy, iPlanPsiDzz, iPlanDTpsi, iPlanSp2,
 		// planSx, planSy, planSz, iPlanSx, iPlanSy, iPlanSz;
@@ -130,15 +129,20 @@ int main(int argc, char* argv[]) {
 
 	std::string strPsi = "psi";
 	
-	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/topology/adv-nu";
+	std::string strRho = "rho";
+
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/density/adv-nu";
 	
 	strLoad += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-r") + argv[3] + std::string("/save/");
 
-	std::ofstream psiMid_output, surf_output, velS_output, 
-	  curvH_output, curvK_output, sx_output, sy_output, sz_output;
+	std::string strLoad2 = strLoad;
 
-	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/topology/adv-nu";
+	std::ofstream psiMid_output, surf_output, velS_output, 
+	  curvH_output, curvK_output, sx_output, sy_output, sz_output,
+	  rhoMid_output;
+
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/density/adv-nu";
 
 	strBox += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-r") + argv[3] + std::string("/");
@@ -146,7 +150,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 1024, Ny = 1024, Nz = 1024;
+	const ptrdiff_t Nx = 512, Ny = 512, Nz = 512;
 	const ptrdiff_t NG = Nx*Ny*Nz;
 	const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -175,6 +179,11 @@ int main(int argc, char* argv[]) {
 /* Balance of Linear Momentum parameters */
 
 	double nu = atof(argv[1]);
+
+/* Density field parameters */
+
+	double w = 1.0;
+	double g = 1.0;
 	
 /* Points per wavelength, time step */
 	
@@ -319,6 +328,16 @@ int main(int argc, char* argv[]) {
 	std::vector<double> velSurf_local(alloc_surf);
 	std::vector<double> curvH_local(alloc_surf);
 	std::vector<double> curvK_local(alloc_surf);
+
+/* Local data containers (density) */
+
+	std::vector<double> rho_local(alloc_local);
+	std::vector<double> mq2_local(alloc_local);
+	std::vector<double> C1rho(alloc_local);
+	std::vector<double> C2rho(alloc_local);
+	std::vector<double> psi2_local(alloc_local);
+	std::vector<double> psi2Past_local(alloc_local);
+
 	
 /* Global data containers (surface info)*/
 
@@ -431,6 +450,11 @@ int main(int argc, char* argv[]) {
 			FFTW_REDFT10,FFTW_REDFT10,FFTW_REDFT10,
 	                FFTW_MEASURE);
 
+	planCT = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
+			trans_local.data(),trans_local.data(),MPI::COMM_WORLD,
+			FFTW_REDFT10,FFTW_REDFT10,FFTW_REDFT10,
+	                FFTW_MEASURE);
+
 	iPlanCT = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
 			  trans_local.data(),trans_local.data(),MPI::COMM_WORLD,
 			  FFTW_REDFT01,FFTW_REDFT01,FFTW_REDFT01,
@@ -515,11 +539,13 @@ int main(int argc, char* argv[]) {
 		if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
 		{
 		  psi_local[index] = 0.0;
+		  rho_local[index] = 0.0;
 		}
 		else
 		{
 		  psi_local[index] = Amp*cos(q0*dz*
 					     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+		  rho_local[index] = 1.0;
 		}
 	      }
 	      else
@@ -527,6 +553,7 @@ int main(int argc, char* argv[]) {
 		if (abs(zs) < bE)
 		{
 		  psi_local[index] = Amp*cos(q0*zs*dz);
+		  rho_local[index] = 1.0;
 		}
 		else
 		{
@@ -553,6 +580,16 @@ int main(int argc, char* argv[]) {
 	std::ofstream psi_output(strPsi.c_str());
 	assert(psi_output.is_open());
 	psi_output.close();
+
+	/** Create Rho output **/
+
+	strRho += std::to_string(rank);
+	strRho += ".dat";
+	strRho = strBox + strRho;
+	
+	std::ofstream rho_output(strRho.c_str());
+	assert(rho_output.is_open());
+	rho_output.close();
 		
 	if (rank == 0 )
 	{	
@@ -568,6 +605,12 @@ int main(int argc, char* argv[]) {
 	  std::ofstream psiMid_output(strBox+"psiMid.dat");
 	  assert(psiMid_output.is_open());
 	  psiMid_output.close();
+
+	/** Create rhoMid output **/
+
+	  std::ofstream rhoMid_output(strBox+"rhoMid.dat");
+	  assert(rhoMid_output.is_open());
+	  rhoMid_output.close();
 
 	/** Crete velocity outputs **/
 
@@ -629,6 +672,32 @@ int main(int argc, char* argv[]) {
 	}
 
 	psidata.close();
+
+
+	/** Create Rho output **/
+
+	strRho += std::to_string(rank);
+	strRho += ".dat";
+ 	strLoad2 = strLoad2 + strRho;
+	strRho  = strBox + strRho;	
+
+	std::ifstream rhodata(strLoad2.c_str());
+	assert(rhodata.is_open());
+
+	for ( i_local = 0; i_local < local_n0; i_local++ ) 
+	{
+	  i = i_local + local_0_start;
+
+	  for ( j = 0; j < Ny; j++ ) {
+	  for ( k = 0; k < Nz; k++ ) 
+	  {	
+	    index = (i_local*Ny + j) * Nz + k;
+	    rhodata >> rho_local[index];
+	  }}
+	}
+
+	rhodata.close();
+
 
 	// This segment if for loading a single .dat
 /*	
@@ -732,11 +801,13 @@ int main(int argc, char* argv[]) {
 	 for ( k = 0; k < Nz; k++ )
 	 {
 	   index =  (i_local*Ny + j)*Nz + k;
-	   mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
-	   opSH = alpha*pow(mq2-q02,2);
+	   mq2_local[index] = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
+	   opSH = alpha*pow(mq2_local[index]-q02,2);
 	   aLin[index] = ep - opSH; ;
 	   C1[index] = (1.0+dtd2*aLin[index]);
 	   C2[index] = (1.0-dtd2*aLin[index]);
+	   C1rho[index] = (1.0-dt*w*mq2_local[index]);
+	   C2rho[index] = (1.0+dt*w*mq2_local[index]);
 	   
 	   mq2 = pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);		
 	   CM1x[index] = scale/(nu*mq2);
@@ -1285,6 +1356,51 @@ int main(int argc, char* argv[]) {
 	   fftw_execute(iPlanSTz);
 	   velz_local = trans_local;
 
+
+
+
+	   /* COMPUTE: NEW RHO IN FOURIER SPACE (CN/AB scheme) */
+
+
+
+	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+
+	   i = i_local + local_0_start;
+
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ ) 
+	   {
+	     index =  (i_local*Ny + j)*Nz + k;
+	     psi2_local[index] = pow(psi_local[index],2);
+	   }}}
+
+	   trans_local = psi2_local;
+	   fftw_execute(planCT);
+	   psi2_local = trans_local;
+
+	   trans_local = rho_local;
+	   fftw_execute(planCT);
+	   rho_local = trans_local;
+
+	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ )
+	   {
+	     index =  (i_local*Ny + j)*Nz + k;
+
+	     rho_local[index] = 
+	       scale*(C1rho[index]*rho_local[index]- dtd2*g*mq2_local[index]*
+		      (3.0*psi2_local[index]-psi2Past_local[index]))/C2rho[index];
+	    
+	   }}}	
+	   
+	   psi2Past_local = psi2_local;
+
+	   trans_local = rho_local;
+	   fftw_execute(iPlanCT);
+	   rho_local = trans_local;
+
 	   /* COMPUTE: CURRENT Nr_local (S)*/
 
 	   for ( i_local = 0; i_local < local_n0; i_local++ ){
@@ -1299,10 +1415,11 @@ int main(int argc, char* argv[]) {
 	       - gamma*pow(psi_local[index],5)
 	       - velx_local[index]*psiGradx_local[index]
 	       - vely_local[index]*psiGrady_local[index]
-	       - velz_local[index]*psiGradz_local[index];
+	       - velz_local[index]*psiGradz_local[index]
+	       - 2*g*rho_local[index]*psi_local[index];
 	   }}}
 
-	   /* Obtain current Nq_local */
+	   /* Obtain current Nq_local and psi^2 in FS */
 
 	   fftw_execute(planN);	
 
@@ -1556,6 +1673,21 @@ int main(int argc, char* argv[]) {
 
 		psi_output.close();
 
+		// rho output
+
+		std::ofstream rho_output(strRho.c_str());
+		assert(rho_output.is_open());
+
+		for ( i_local = 0; i_local < local_n0; i_local++ ){
+		for ( j = 0; j < Ny; j++ ) {
+		for ( k = 0; k < Nz; k++ ) 
+		{
+		  index  = (i_local*Ny +j)*Nz + k;
+		  rho_output << rho_local[index] << "\n";
+		}}}
+
+		rho_output.close();
+
 		/** rank 0 outputs **/
 
 		if (rank == 0 )
@@ -1633,6 +1765,39 @@ int main(int argc, char* argv[]) {
 			    << " local date and time is: " << dNow << std::endl;
 					
 		} // ends rank 0 outputs
+
+
+
+		// Save rho_local for mid cross section
+
+		j = Ny/2;
+		for( k = 0; k < Nz ; k++ ){
+		for( i_local = 0; i_local < local_n0 ; i_local++ ){
+			index  = (i_local*Ny +j)*Nz + k;
+			index2 = i_local*Nz + k;
+			psiSlice_local[index2] = rho_local[index];
+		}}
+
+		MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
+					   psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
+
+		if (rank == 0 )
+		{
+		  rhoMid_output.open(strBox+"rhoMid.dat",std::ios_base::app);
+									
+		  assert(rhoMid_output.is_open());
+
+		  for ( i = 0; i < Nx; i++ ) {
+		  for ( k = 0; k < Nz; k++ ) {
+			
+		    index = i*Nz + k;
+			
+		    rhoMid_output << psiSlice[index] << "\n";
+		  }}
+
+		  rhoMid_output.close();  
+		}
+
 
 		// Save vel_x for mid cross section
 
@@ -1770,6 +1935,7 @@ int main(int argc, char* argv[]) {
   	fftw_destroy_plan(planPsi);
   	fftw_destroy_plan(iPlanPsi);
   	fftw_destroy_plan(planN);
+	fftw_destroy_plan(planCT);
 
   	fftw_destroy_plan(planSTx);
   	fftw_destroy_plan(iPlanSTx);

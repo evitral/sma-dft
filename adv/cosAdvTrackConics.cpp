@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
 
 	std::string strPsi = "psi";
 	
-	std::string strLoad = "/home/vinals/vitra002/smectic/results/adv2-nu";
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/topology/adv-nu";
 	
 	strLoad += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-ra") + argv[3] + std::string("-rb") 
@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 	std::ofstream psiMid_output, surf_output, velS_output, 
 	  curvH_output, curvK_output, sx_output, sy_output, sz_output;
 
-	std::string strBox = "/home/vinals/vitra002/smectic/results/adv2-nu";
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/topology/adv-nu";
 
 	strBox += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-ra") + argv[3] + std::string("-rb") + 

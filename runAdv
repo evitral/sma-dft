@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH -J adve0d84a960
+#SBATCH -o adve0d84a960.%j.out
+#SBATCH --partition=compute
+#SBATCH --nodes=6
+#SBATCH --ntasks-per-node=24
+#SBATCH --mem=120G
+#SBATCH --export=ALL
+#SBATCH -t 48:00:00
+#SBATCH -A umn120
+
+echo "-------------------------------------------------------------------------"
+echo "Environment for building and running applications with Intel compiler and MPI"
+
+# Reset modules to base state
+#module purge
+
+#Load modules for Intel & MPI
+module load gnutools
+module load intel/2016.3.210 mvapich2_ib
+module load fftw
+#module list
+#cd /home/evitral/sma-dft/no-adv/
+
+echo " "
+echo "-------------------------------------------------------------------------"
+echo "Application with double precision MPI parallel FFTW 3.3"
+export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
+export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
+mpicxx -I $BUILD/include -O3 -o adv/cosAdvTrackMult adv/cosAdvTrackMult.cpp -L $BUILD/lib $LIBS
+ibrun -np 128 ./adv/cosAdvTrackMult 100 84 960 1 > /oasis/scratch/comet/evitral/temp_project/topology/result3.out

@@ -1,14 +1,15 @@
 /********************************************
  *                                          *
- *         cosAdvTrackMult.cpp              *
+ *             quasi-mass.cpp               *
  *                                          *
  *     SmecticA 3D Phase Field              *
  *     FFTW in parallel                     *
  *     cos: DCT (and also DST!)             *
  *     Adv: Advection is on                 *
  *     Curv: Save curvatures after X steps  *
- *     Mult: Better parallelization         *
- *     in terms of memory usage             *                         
+ *     quasi: Quasi-incompressible eqns,    *
+ *            varying density field         *                         
+ *     mass: Mass is properly conserved     *           
  *                                          *
  *     Last mod: 12/07/2018                 *
  *     Author: Eduardo Vitral               *
@@ -90,8 +91,7 @@ int main(int argc, char* argv[]) {
 
 /* FFTW plans */
 
-	fftw_plan planPsi, iPlanPsi, planN,
-	  planSTx, planSTy, planSTz, iPlanSTx, iPlanSTy, iPlanSTz, iPlanCT;
+  fftw_plan planCT, planSTx, planSTy, planSTz, iPlanSTx, iPlanSTy, iPlanSTz, iPlanCT;
 		// iPlanPsiDxx, iPlanPsiDyy, iPlanPsiDzz, iPlanDTpsi, iPlanSp2,
 		// planSx, planSy, planSz, iPlanSx, iPlanSy, iPlanSz;
 
@@ -107,11 +107,18 @@ int main(int argc, char* argv[]) {
 
 	double Sx, Sy, Sz;
 
+	double mu;
+
 /* L1 related doubles + output */
 
 	double L1, limL1, sumA, sumA_local, sumB, sumB_local;
 
 	std::ofstream L1_output;
+
+/* mass output */
+
+	double rho_sum, rho_sum_local;
+	std::ofstream mass_output;
 
 /* Ints and doubles for surface info */
 
@@ -130,15 +137,15 @@ int main(int argc, char* argv[]) {
 
 	std::string strPsi = "psi";
 	
-	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/topology/adv-nu";
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi/qsi-nu";
 	
 	strLoad += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-r") + argv[3] + std::string("/save/");
 
 	std::ofstream psiMid_output, surf_output, velS_output, 
-	  curvH_output, curvK_output, sx_output, sy_output, sz_output;
+	  curvH_output, curvK_output, sx_output, sy_output, sz_output, p_output;
 
-	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/topology/adv-nu";
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi/qsi-nu";
 
 	strBox += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("-r") + argv[3] + std::string("/");
@@ -146,7 +153,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-	const ptrdiff_t Nx = 1024, Ny = 1024, Nz = 1024;
+	const ptrdiff_t Nx = 512, Ny = 512, Nz = 512;
 	const ptrdiff_t NG = Nx*Ny*Nz;
 	const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -175,6 +182,9 @@ int main(int argc, char* argv[]) {
 /* Balance of Linear Momentum parameters */
 
 	double nu = atof(argv[1]);
+	double Amp = 1.328; 
+	double amp_r = 1/Amp;
+	double rho_lim = 0.1;
 	
 /* Points per wavelength, time step */
 	
@@ -252,7 +262,6 @@ int main(int argc, char* argv[]) {
  *                                          *
  *******************************************/    
 
-	// REMOVEEEEEE
 //	std::vector<double> psi(size*alloc_local);
 
 /* Local data containers */
@@ -264,10 +273,9 @@ int main(int argc, char* argv[]) {
 	std::vector<double> C2(alloc_local);
 	std::vector<double> psi_local(alloc_local);
 	std::vector<double> psiq_local(alloc_local);
-	std::vector<double> psiNew_local(alloc_local);
-	std::vector<double> Nr_local(alloc_local);
-	std::vector<double> Nq_local(alloc_local);
-	std::vector<double> NqPast_local(alloc_local);
+	std::vector<double> psi_old_local(alloc_local);
+	std::vector<double> Nl_local(alloc_local);
+	std::vector<double> Nl_old_local(alloc_local);
 
 	std::vector<double> Sp2_local(alloc_local);
 	
@@ -293,6 +301,8 @@ int main(int argc, char* argv[]) {
 	std::vector<double> psi_back(Nslice);
 	std::vector<double> psi_front2(Nslice);
 	std::vector<double> psi_back2(Nslice);
+	std::vector<double> psi_front3(Nslice);
+	std::vector<double> psi_back3(Nslice);
 
 	std::vector<double> CM1x(alloc_local);
 	std::vector<double> CM1y(alloc_local);
@@ -302,7 +312,19 @@ int main(int argc, char* argv[]) {
 	std::vector<double> CM2z(alloc_local);
 
 	std::vector<double> trans_local(alloc_local);
-	
+
+/* Local data containers (density) */
+
+	std::vector<double> rho_local(alloc_local);
+	std::vector<double> p_local(alloc_local);	
+
+	std::vector<double> divv_local(alloc_local);	
+
+       	// std::vector<double> psiGradx_old_local(alloc_local);
+	// std::vector<double> psiGrady_old_local(alloc_local);
+	// std::vector<double> psiGradz_old_local(alloc_local);
+
+
 /* Local data containers (surface info) */
 
 	std::vector<double> psiGradx_local(alloc_local);
@@ -416,18 +438,18 @@ int main(int argc, char* argv[]) {
  *                                          *
  *******************************************/
 
-	planPsi = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
-		  	  psi_local.data(),psiq_local.data(),MPI::COMM_WORLD,
-		  	  FFTW_REDFT10,FFTW_REDFT10,FFTW_REDFT10,
-		  	  FFTW_MEASURE);
+	// planPsi = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
+	// 	  	  psi_local.data(),psiq_local.data(),MPI::COMM_WORLD,
+	// 	  	  FFTW_REDFT10,FFTW_REDFT10,FFTW_REDFT10,
+	// 	  	  FFTW_MEASURE);
 
-	iPlanPsi = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
-		   	   psiq_local.data(),psiNew_local.data(),MPI::COMM_WORLD,
-		   	   FFTW_REDFT01,FFTW_REDFT01,FFTW_REDFT01,
-		           FFTW_MEASURE);
+	// iPlanPsi = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
+	// 	   	   psiq_local.data(),psiNew_local.data(),MPI::COMM_WORLD,
+	// 	   	   FFTW_REDFT01,FFTW_REDFT01,FFTW_REDFT01,
+	// 	           FFTW_MEASURE);
 
-	planN = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
-			Nr_local.data(),Nq_local.data(),MPI::COMM_WORLD,
+	planCT = fftw_mpi_plan_r2r_3d(Nx,Ny,Nz,
+			trans_local.data(),trans_local.data(),MPI::COMM_WORLD,
 			FFTW_REDFT10,FFTW_REDFT10,FFTW_REDFT10,
 	                FFTW_MEASURE);
 
@@ -479,7 +501,6 @@ int main(int argc, char* argv[]) {
 	if ( load != 1 )
 	{
 
-	double Amp = 1.328; 
 
 /*************** Not in use ****************
 
@@ -563,6 +584,12 @@ int main(int argc, char* argv[]) {
 	  assert(L1_output.is_open());
 	  L1_output.close();
 
+	/** Create mass output **/
+
+	  std::ofstream mass_output(strBox+"mass.dat");
+	  assert(mass_output.is_open());
+	  mass_output.close();
+
 	/** Create psiMid output **/
 
 	  std::ofstream psiMid_output(strBox+"psiMid.dat");
@@ -580,6 +607,12 @@ int main(int argc, char* argv[]) {
 	  sx_output.close();
 	  sy_output.close();
 	  sz_output.close();
+
+	/** Crete pressure output **/
+
+	  std::ofstream p_output(strBox+"p.dat");
+	  assert(p_output.is_open());
+	  p_output.close();
 
 	/** Create surf info outputs **/
 		
@@ -752,30 +785,41 @@ int main(int argc, char* argv[]) {
 		 
 	 }}}
 
-	 // psiNew is the gradient penalty in real space
-	 //fftw_execute(iPlanPsi);
+
+	 /* Move psi_local to Fourier Space */
+
+	 trans_local = psi_local;
+	 fftw_execute(planCT);
+	 psiq_local = trans_local;
+
 
 	 // Compute Nr adding the substrate penalty * wall potential
+	 // Also, scale psi
 
 	 for ( i_local = 0; i_local < local_n0; i_local++ ){
-
-	 i = i_local + local_0_start;
-
 	 for ( j = 0; j < Ny; j++ ) {
 	 for ( k = 0; k < Nz; k++ )
 	 {
 	   index =  (i_local*Ny + j)*Nz + k;
 
-	   Nr_local[index] = beta*pow(psi_local[index],3)
+	   psiq_local[index] = scale*psiq_local[index];
+
+	   Nl_local[index] = beta*pow(psi_local[index],3)
 	     - gamma*pow(psi_local[index],5); // + psiNew_local[index]*wall[index];
 	 }}}
 	 //
 
 
- /* Move Nr_local to Fourier Space */
+ /* Move Nl_local to Fourier Space */
 
-	 fftw_execute(planN);
+	 trans_local = Nl_local;
+	 fftw_execute(planCT);
+	 Nl_local = trans_local;
 
+
+	 psi_old_local = psi_local;
+
+	 std::fill(divv_local.begin(),divv_local.end(),0);  
 
  /********************************************
   *                                          *
@@ -825,6 +869,7 @@ int main(int argc, char* argv[]) {
 	 {
 
 	   countL1++;
+	   nLoop++;
 
 	   /** Empty out containers **/
 
@@ -839,26 +884,34 @@ int main(int argc, char* argv[]) {
 
 	   /** Previous Nq_local is now NqPast_local  **/
 
-	   NqPast_local = Nq_local;
+	   Nl_old_local = Nl_local;
 
 
 	   /** Move psi to FS and scale it **/
+	   // Also, compute Sp2, the linear part of mu
 
-	   fftw_execute(planPsi);
+	   // fftw_execute(planPsi); //?
 
 	   for ( i_local = 0; i_local < local_n0; i_local++ ){
 	   for ( j = 0; j < Ny; j++ ) {
 	   for ( k = 0; k < Nz; k++ )
 	   {
 
-	     i = i_local + local_0_start;
-
 	     index =  (i_local*(Ny) + j)*(Nz) + k;
 
-	     psiq_local[index] = scale*psiq_local[index];
+	     // psiq_local[index] = scale*psiq_local[index];
+
+	     Sp2_local[index] = -aLin[index]*psiq_local[index];	    	    	    
 	   
 	   }}}	
 
+	   trans_local = psiq_local;
+	   fftw_execute(iPlanCT);
+	   psi_local = trans_local;
+
+	   trans_local = Sp2_local;
+	   fftw_execute(iPlanCT);
+	   Sp2_local = trans_local;
 
 	   /** COMPUTE: gradient of psi **/
 	   // partial_x psi (parallelized direction)
@@ -872,6 +925,7 @@ int main(int argc, char* argv[]) {
 	     index = j*Nz + k;
 
 	     psi_back[index] = psiq_local[index2];
+
 	   }}
 
 	   if (rank == size-1){
@@ -899,6 +953,7 @@ int main(int argc, char* argv[]) {
 
 	     MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
 				  MPI::DOUBLE,rank+1,0);
+
 	   }		 	 
 
 	   if (rank != size-1 ) 
@@ -958,10 +1013,6 @@ int main(int argc, char* argv[]) {
 	   
 	   }}}	
 
-	   trans_local = psiq_local;
-	   fftw_execute(iPlanCT);
-	   psi_local = trans_local;
-
 	   trans_local = psiGradx_local;
 	   fftw_execute(iPlanSTx);
 	   psiGradx_local = trans_local;
@@ -975,23 +1026,86 @@ int main(int argc, char* argv[]) {
 	   psiGradz_local = trans_local;
 
 
-	   /** Sp2: linear part of mu, psiq is already scaled **/
+
+
+
+
+	   /** Density constitutive law **/
+
+	   if (nLoop > 45 || load == 1){
 
 	   for ( i_local = 0; i_local < local_n0; i_local++ ){
 	   for ( j = 0; j < Ny; j++ ) {
 	   for ( k = 0; k < Nz; k++ ) 
 	   {
 	     index =  (i_local*Ny + j)*Nz + k;
-
-	     Sp2_local[index] = -aLin[index]*psiq_local[index];	    	    	    
+	   
+	     rho_local[index] = amp_r*sqrt(pow(psi_local[index],2)
+					   +pow(psiGradx_local[index],2)
+					   +pow(psiGrady_local[index],2)
+					   +pow(psiGradz_local[index],2));
+	     	       
 	   }}}
 
-	   trans_local = Sp2_local;
-	   fftw_execute(iPlanCT);
-	   Sp2_local = trans_local;
+	   // trans_local = rho_local;
+	   // fftw_execute(planCT);
+	   // rho_local = trans_local;
+
+	   // for ( i_local = 0; i_local < local_n0; i_local++ ){
+	   // for ( j = 0; j < Ny; j++ ) {
+	   // for ( k = 0; k < Nz; k++ ) 
+	   // {
+	   //   index =  (i_local*Ny + j)*Nz + k;
+	   
+	   //   rho_local[index] = scale*rho_local[index]; //*exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2);
+	     	       
+	   // }}}
+
+	   // trans_local = rho_local;
+	   // fftw_execute(iPlanCT);
+	   // rho_local = trans_local;
 
 
-	   /** Compute mu grad psi and move it to Fourier Space **/
+	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ ) 
+	   {
+	     index =  (i_local*Ny + j)*Nz + k;
+	   
+	     divv_local[index] = pow(amp_r,2)*psi_local[index]*(-pow(amp_r,2)*p_local[index]*psi_local[index]/pow(std::max(rho_local[index],rho_lim),3)
+								+ Sp2_local[index] - beta*pow(psi_local[index],3)
+								+ gamma*pow(psi_local[index],5))/pow(std::max(rho_local[index],rho_lim),2);	     	       
+	   }}}
+
+	   trans_local = divv_local;
+	   fftw_execute(planCT);
+	   divv_local = trans_local;
+
+	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ ) 
+	   {
+	     index =  (i_local*Ny + j)*Nz + k;
+	   
+	     divv_local[index] = divv_local[index]*exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2);
+
+	     // if (pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2) > 0.1){
+	     //   divv_local[index] = 0;
+	     // }
+	     	       
+	   }}}
+
+
+
+	   } else{
+	     std::fill(rho_local.begin(),rho_local.end(),amp_r*Amp); 
+	   }
+
+	   
+
+
+
+	   /** Compute rho mu grad psi and move it to Fourier Space **/
 	   
 	   for ( i_local = 0; i_local < local_n0; i_local++ ){
 	   for ( j = 0; j < Ny; j++ ) {
@@ -1000,17 +1114,17 @@ int main(int argc, char* argv[]) {
 
 	     index =  (i_local*Ny + j)*Nz + k;
 
+	     mu = Sp2_local[index] - beta*pow(psi_local[index],3)
+	       + gamma*pow(psi_local[index],5);
+
 	     Sx_local[index] =
-	       (Sp2_local[index] - beta*pow(psi_local[index],3)
-		+ gamma*pow(psi_local[index],5))*psiGradx_local[index];
+	       rho_local[index]*mu*psiGradx_local[index];
 
 	     Sy_local[index] =
-	       (Sp2_local[index] - beta*pow(psi_local[index],3)
-		+ gamma*pow(psi_local[index],5))*psiGrady_local[index];
+	       rho_local[index]*mu*psiGrady_local[index];
 
 	     Sz_local[index] =
-	       (Sp2_local[index] - beta*pow(psi_local[index],3)
-		+ gamma*pow(psi_local[index],5))*psiGradz_local[index];
+	       rho_local[index]*mu*psiGradz_local[index];
 
 	   }}}
 
@@ -1027,8 +1141,100 @@ int main(int argc, char* argv[]) {
 	   Sz_local = trans_local;
 
 
+	   // Note: planSTx moves modes +1 in x etc. 
+	   // Hence, for computing velx I need to move Sy_local +1 in x
+	   // and by -1 in y.
+
+	   i_local = local_n0-1;
+	 
+	   for( j = 0; j < Ny; j++ ){
+	   for( k = 0; k < Nz; k++ ){
+
+	     index2 = (i_local*Ny + j) * Nz + k;
+	     index = j*Nz + k;
+
+	     psi_front[index] = Sx_local[index2];
+	   }}
+
+	   if (rank == 0){
+	   
+	     MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
+				  MPI::DOUBLE,rank+1,0);
+	   
+	   } else if (rank % 2 == 0){
+
+	     MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
+				  MPI::DOUBLE,rank+1,0);
+
+	     MPI::COMM_WORLD.Recv(psi_back.data(),Nslice,
+				  MPI::DOUBLE,rank-1,0);
+
+	   } else if (rank != size-1){
+
+	     MPI::COMM_WORLD.Recv(psi_back.data(),Nslice,
+				  MPI::DOUBLE,rank-1,0);
+
+	     MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
+				  MPI::DOUBLE,rank+1,0);
+
+
+	   } else {
+
+	     MPI::COMM_WORLD.Recv(psi_back.data(),Nslice,
+				  MPI::DOUBLE,rank-1,0);
+	   }		 	 
+
+	   if (rank == 0 ) 
+	   {
+	     std::fill(psi_back.begin(),psi_back.end(),0);
+	   }
+	 
+	   for ( i_local = 0; i_local < local_n0; i_local++ ) {
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ )
+	   {
+
+	     index = (i_local*Ny + j) * Nz + k;
+	     i = i_local + local_0_start;
+
+	     if (i_local > 0){
+	       index2 = ((i_local-1)*Ny + j) * Nz + k;
+	       Sx = Sx_local[index2];
+	     } else {
+	       index2 = j * Nz + k;
+	       Sx = psi_back[index2];
+	     }
+
+	     if (j > 0){
+	       index2 = (i_local*Ny + j-1) * Nz + k;
+	       Sy = Sy_local[index2];
+	     } else {
+	       Sy = 0;
+	     }
+
+	     if (k > 0){
+	       Sz = Sz_local[index-1];
+	     } else {
+	       Sz = 0;
+	     }
+	     
+	     if (i*j*k > 0){
+	       p_local[index] = -scale*(Vqx[i_local]*Sx+Vqy[j]*Sy+Vqz[k]*Sz)/
+		 (pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2));
+	     } else {
+	       p_local[index] = 0;
+	     }
+
+	   }}}
+
+	   trans_local = p_local;
+	   fftw_execute(iPlanCT);
+	   p_local = trans_local;
+
+
+
 	   /** COMPUTE: Velocity field **/
-	   // vel_x (parallelized direction)
+	   // A. velx (parallelized direction)
 
 	   // Send Sz and Sy i_local=0 data to previous rank
 
@@ -1051,16 +1257,25 @@ int main(int argc, char* argv[]) {
 	       psi_back2[index] = Sz_local[index2];
 	     } else {
 	       psi_back2[index] = 0;
+
 	     }
+
+	     index2 = (i_local*Ny + j) * Nz + k;
+	     psi_back3[index] = divv_local[index2];
+
 	   }}
 
 	   if (rank == size-1){
 	   
 	     MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
-				  MPI::DOUBLE,rank-1,0);
+ 				  MPI::DOUBLE,rank-1,0);
 
 	     MPI::COMM_WORLD.Send(psi_back2.data(),Nslice,
-				  MPI::DOUBLE,rank-1,0);
+				  MPI::DOUBLE,rank-1,1);
+
+	     MPI::COMM_WORLD.Send(psi_back3.data(),Nslice,
+				  MPI::DOUBLE,rank-1,2);
+
 	   
 	   } else if (rank % 2 != 0){
 
@@ -1071,10 +1286,17 @@ int main(int argc, char* argv[]) {
 				  MPI::DOUBLE,rank+1,0);
 
 	     MPI::COMM_WORLD.Send(psi_back2.data(),Nslice,
-				  MPI::DOUBLE,rank-1,0);
+				  MPI::DOUBLE,rank-1,1);
 
 	     MPI::COMM_WORLD.Recv(psi_front2.data(),Nslice,
-				  MPI::DOUBLE,rank+1,0);
+				  MPI::DOUBLE,rank+1,1);
+
+	     MPI::COMM_WORLD.Send(psi_back3.data(),Nslice,
+				  MPI::DOUBLE,rank-1,2);
+
+	     MPI::COMM_WORLD.Recv(psi_front3.data(),Nslice,
+				  MPI::DOUBLE,rank+1,2);
+
 
 	   } else if (rank != 0){
 
@@ -1085,20 +1307,32 @@ int main(int argc, char* argv[]) {
 				  MPI::DOUBLE,rank-1,0);
 
 	     MPI::COMM_WORLD.Recv(psi_front2.data(),Nslice,
-				  MPI::DOUBLE,rank+1,0);
+				  MPI::DOUBLE,rank+1,1);
 
 	     MPI::COMM_WORLD.Send(psi_back2.data(),Nslice,
-				  MPI::DOUBLE,rank-1,0);
+				  MPI::DOUBLE,rank-1,1);
+
+	     MPI::COMM_WORLD.Recv(psi_front3.data(),Nslice,
+				  MPI::DOUBLE,rank+1,2);
+
+	     MPI::COMM_WORLD.Send(psi_back3.data(),Nslice,
+				  MPI::DOUBLE,rank-1,2);
+
+
 	   } else {
 
 	     MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
 				  MPI::DOUBLE,rank+1,0);
 
 	     MPI::COMM_WORLD.Recv(psi_front2.data(),Nslice,
-				  MPI::DOUBLE,rank+1,0);
+				  MPI::DOUBLE,rank+1,1);
+
+	     MPI::COMM_WORLD.Recv(psi_front3.data(),Nslice,
+				  MPI::DOUBLE,rank+1,2);
+
 	   }		 	 
 
-	   // Use front data to compute vx at i_local=local_n0-1
+	   // Use front data to compute velx at i_local=local_n0-1
 
 	   i_local = local_n0-1;
 	   if (rank != size-1 ) 
@@ -1116,41 +1350,109 @@ int main(int argc, char* argv[]) {
 		     
 	       dotSqVq = Vsx[i_local]*Sx_local[index] + Vqy[j]*Sy + Vqz[k]*Sz;
 	     
-	       velx_local[index] = CM1x[index]*(Sx_local[index]
-					       - CM2x[index]*dotSqVq);
-
+	       velx_local[index] = //exp(-1.57*1.57*(pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2)* 
+		 CM1x[index]*(Sx_local[index]
+			      - CM2x[index]*dotSqVq
+			      + nu*Vsx[i_local]*psi_front3[index2]);
 	     }}
 	   } 	 
 
 
-	   // Compute vel_x for the rest
+	   // Compute velx for the rest
+
+	   // 1. Case j > 0, k > 0
 
 	   for ( i_local = 0; i_local < local_n0-1; i_local++ ) {
-	   for ( j = 0; j < Ny; j++ ) {
-	   for ( k = 0; k < Nz; k++ )
+	   for ( j = 1; j < Ny; j++ ) {
+	   for ( k = 1; k < Nz; k++ )
+	   {
+	     index = (i_local*Ny + j) * Nz + k;
+	  
+	     index2 = ((i_local+1)*Ny + j-1) * Nz + k;
+	     Sy = Sy_local[index2];
+	   
+	     index2 = ((i_local+1)*Ny + j) * Nz + k-1;
+	     Sz = Sz_local[index2];        
+	   	   	     
+	     dotSqVq = Vsx[i_local]*Sx_local[index] + Vqy[j]*Sy + Vqz[k]*Sz;	   	   
+
+	     velx_local[index] = //exp(-1.57*1.57*(pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2)* 
+	       CM1x[index]*(Sx_local[index]
+			    - CM2x[index]*dotSqVq
+			    + nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+	   }}}
+
+
+	   // 2. Case j = 0, k > 0
+
+	   j = 0;
+
+	   for ( i_local = 0; i_local < local_n0-1; i_local++ ) {
+	   for ( k = 1; k < Nz; k++ )
 	   {
 	     index = (i_local*Ny + j) * Nz + k;
 
-	     if ( j !=0) {
-	       index2 = ((i_local+1)*Ny + j-1) * Nz + k;
-	       Sy = Sy_local[index2];
-	     } else {
-	       Sy = 0;
-	     }
+	     // Sy = 0;
 
-	     if ( k !=0) {
-	       index2 = ((i_local+1)*Ny + j) * Nz + k-1;
-	       Sz = Sz_local[index2];
-	     } else {
-	       Sz = 0;
-	     }
+	     index2 = ((i_local+1)*Ny + j) * Nz + k-1;
+	     Sz = Sz_local[index2];
 	     
-	     dotSqVq = Vsx[i_local]*Sx_local[index] + Vqy[j]*Sy + Vqz[k]*Sz;
-	   	     
-	     velx_local[index] = CM1x[index]*(Sx_local[index]
-					      - CM2x[index]*dotSqVq);
-	   }}}
+	     dotSqVq = Vsx[i_local]*Sx_local[index] + Vqz[k]*Sz;	   	     
 
+	     velx_local[index] = //exp(-1.57*1.57*(pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2)*
+	       CM1x[index]*(Sx_local[index]
+			    - CM2x[index]*dotSqVq
+			    + nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+	   }}
+
+
+	   // 3. Case j > 0, k = 0
+
+	   k = 0;
+
+	   for ( i_local = 0; i_local < local_n0-1; i_local++ ) {
+	   for ( j = 1; j < Ny; j++ )
+	   {
+	     index = (i_local*Ny + j) * Nz + k;
+
+
+	     index2 = ((i_local+1)*Ny + j-1) * Nz + k;
+	     Sy = Sy_local[index2];	   
+	   
+	     //Sz = 0;	   
+	     
+	     dotSqVq = Vsx[i_local]*Sx_local[index] + Vqy[j]*Sy;
+	   	     
+	     velx_local[index] = //exp(-1.57*1.57*(pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2)* 
+	       CM1x[index]*(Sx_local[index]
+			    - CM2x[index]*dotSqVq
+			    + nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+	   }}
+
+
+	   // 4. Case j = 0, k = 0
+
+	   j = 0;
+	   k = 0;
+
+	   for ( i_local = 0; i_local < local_n0-1; i_local++ )
+	   {
+	     index = (i_local*Ny + j) * Nz + k;
+	    
+	     //Sy = 0;
+	   
+	     //Sz = 0;	   
+	     
+	     dotSqVq = Vsx[i_local]*Sx_local[index];
+	   	     
+	     velx_local[index] = //exp(-1.57*1.57*(pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2)* 
+	       CM1x[index]*(Sx_local[index]
+			    - CM2x[index]*dotSqVq
+			    + nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+	   }
+
+
+	   // B. vely and velz 
 
 	   // Send i_local=local_n0-1 Sx data to back rank 
 
@@ -1159,8 +1461,8 @@ int main(int argc, char* argv[]) {
 	   i_local = local_n0-1;
 	 
 	   for( j = 0; j < Ny; j++ ){
-	   for( k = 0; k < Nz; k++ ){
-
+	   for( k = 0; k < Nz; k++ )
+	   {
 	     index = j*Nz + k;
 	     index2 = (i_local*Ny + j) * Nz + k;
 
@@ -1196,7 +1498,9 @@ int main(int argc, char* argv[]) {
 
 	   }		 	 
 
-	   // Compute vel_y and vel_z
+	   // Compute vely and velz
+
+	   // use back data to compute vel_y and vel_z for i_local = 0
 
 	   i_local = 0;
 	   for ( j = 0; j < Ny-1; j++ ) {
@@ -1216,8 +1520,10 @@ int main(int argc, char* argv[]) {
 	     
 	     dotSqVq = Vqx[i_local]*Sx + Vsy[j]*Sy_local[index] + Vqz[k]*Sz;
 	   	     
-	     vely_local[index] = CM1y[index]*(Sy_local[index]
-					      - CM2y[index]*dotSqVq);
+	     vely_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2))/2)* 
+	       CM1y[index]*(Sy_local[index]
+			    - CM2y[index]*dotSqVq
+			    + nu*Vsy[j]*divv_local[index+Nz]);
 	   
 	     index2 = j*Nz+k+1;
 	     Sx = psi_back[index2];	     	     
@@ -1231,47 +1537,164 @@ int main(int argc, char* argv[]) {
 	     
 	     dotSqVq = Vqx[i_local]*Sx + Vqy[j]*Sy + Vsz[k]*Sz_local[index];
 	   	     
-	     velz_local[index] = CM1z[index]*(Sz_local[index]
-					      - CM2z[index]*dotSqVq);
+	     velz_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2))/2)* 
+	       CM1z[index]*(Sz_local[index]
+			    - CM2z[index]*dotSqVq
+			    + nu*Vsz[k]*divv_local[index+1]);
 	   }}
+
+	   // Compute vely and velz for the rest
+
+	   // 1. Case j > 0, k > 0
 
 
 	   for ( i_local = 1; i_local < local_n0; i_local++ ) {
-	   for ( j = 0; j < Ny-1; j++ ) {
-	   for ( k = 0; k < Nz-1; k++ )
+	   for ( j = 1; j < Ny-1; j++ ) {
+	   for ( k = 1; k < Nz-1; k++ )
 	   {
 	     index = (i_local*Ny + j) * Nz + k;
+
+	     // vely
 
 	     index2 = ((i_local-1)*Ny + j+1) * Nz + k;
 	     Sx = Sx_local[index2];
 
-	     if ( k !=0) {
-	       index2 = ((i_local)*Ny + j+1) * Nz + k-1;
-	       Sz = Sz_local[index2];
-	     } else {
-	       Sz = 0;
-	     }
+	     index2 = ((i_local)*Ny + j+1) * Nz + k-1;
+	     Sz = Sz_local[index2];
 	     
 	     dotSqVq = Vqx[i_local]*Sx + Vsy[j]*Sy_local[index] + Vqz[k]*Sz;	   
 	     
-	     vely_local[index] = CM1y[index]*(Sy_local[index]
-					      - CM2y[index]*dotSqVq);
+	     vely_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2))/2)*
+	       CM1y[index]*(Sy_local[index]
+			    - CM2y[index]*dotSqVq
+			    + nu*Vsy[j]*divv_local[index+Nz]);
+
+	     // velz
 
 	     index2 = ((i_local-1)*Ny + j) * Nz + k+1;
 	     Sx = Sx_local[index2];
 
-	     if ( j !=0) {
-	       index2 = ((i_local)*Ny + j-1) * Nz + k+1;
-	       Sy = Sy_local[index2];
-	     } else {
-	       Sy = 0;
-	     }
+	     index2 = ((i_local)*Ny + j-1) * Nz + k+1;
+	     Sy = Sy_local[index2];
 	     
 	     dotSqVq = Vqx[i_local]*Sx + Vqy[j]*Sy + Vsz[k]*Sz_local[index];	   
 	     
-	     velz_local[index] = CM1z[index]*(Sz_local[index]
-					      - CM2z[index]*dotSqVq);
+	     velz_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2))/2)*
+	       CM1z[index]*(Sz_local[index]
+			    - CM2z[index]*dotSqVq
+			    + nu*Vsz[k]*divv_local[index+1]);
 	   }}}
+
+
+
+	   // 2. Case j = 0, k > 0
+
+           j = 0;
+
+	   for ( i_local = 1; i_local < local_n0; i_local++ ) {
+	   for ( k = 1; k < Nz-1; k++ )
+	   {
+	     index = (i_local*Ny + j) * Nz + k;
+
+	     // vely
+
+	     index2 = ((i_local-1)*Ny + j+1) * Nz + k;
+	     Sx = Sx_local[index2];
+	    
+	     index2 = ((i_local)*Ny + j+1) * Nz + k-1;
+	     Sz = Sz_local[index2];
+  	     
+	     dotSqVq = Vqx[i_local]*Sx + Vsy[j]*Sy_local[index] + Vqz[k]*Sz;	   
+	     
+	     vely_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2))/2)* 
+	       CM1y[index]*(Sy_local[index]
+			    - CM2y[index]*dotSqVq
+			    + nu*Vsy[j]*divv_local[index+Nz]);
+
+	     // velz , Sy = 0;
+
+	     index2 = ((i_local-1)*Ny + j) * Nz + k+1;
+	     Sx = Sx_local[index2];
+	     
+	     dotSqVq = Vqx[i_local]*Sx + Vsz[k]*Sz_local[index];	   
+	     
+	     velz_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2))/2)* 
+	       CM1z[index]*(Sz_local[index]
+			    - CM2z[index]*dotSqVq
+			    + nu*Vsz[k]*divv_local[index+1]);
+	   }}
+
+	   // 3. Case j > 0, k = 0
+
+           k = 0;
+
+	   for ( i_local = 1; i_local < local_n0; i_local++ ) {
+	   for ( j = 1; j < Ny-1; j++ )
+	   {
+	     index = (i_local*Ny + j) * Nz + k;
+
+	     // vely, Sz = 0;
+
+	     index2 = ((i_local-1)*Ny + j+1) * Nz + k;
+	     Sx = Sx_local[index2];
+	     
+	     dotSqVq = Vqx[i_local]*Sx + Vsy[j]*Sy_local[index];	   
+	     
+	     vely_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2))/2)* 
+	       CM1y[index]*(Sy_local[index]
+			    - CM2y[index]*dotSqVq
+			    + nu*Vsy[j]*divv_local[index+Nz]);
+
+	     // velz
+
+	     index2 = ((i_local-1)*Ny + j) * Nz + k+1;
+	     Sx = Sx_local[index2];
+	 
+	     index2 = ((i_local)*Ny + j-1) * Nz + k+1;
+	     Sy = Sy_local[index2];
+	     
+	     dotSqVq = Vqx[i_local]*Sx + Vqy[j]*Sy + Vsz[k]*Sz_local[index];	   
+	     
+	     velz_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2))/2)*
+	       CM1z[index]*(Sz_local[index]
+			    - CM2z[index]*dotSqVq
+			    + nu*Vsz[k]*divv_local[index+1]);
+	   }}
+
+
+	   // 4. Case j = 0, k = 0
+
+	   j = 0;
+	   k = 0;
+
+	   for ( i_local = 1; i_local < local_n0; i_local++ )
+	   {
+	     index = (i_local*Ny + j) * Nz + k;
+
+	     // vely, Sz = 0;
+
+	     index2 = ((i_local-1)*Ny + j+1) * Nz + k;
+	     Sx = Sx_local[index2];
+	     
+	     dotSqVq = Vqx[i_local]*Sx + Vsy[j]*Sy_local[index];	   
+	     
+	     vely_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2))/2)*
+	       CM1y[index]*(Sy_local[index]
+			    - CM2y[index]*dotSqVq
+			    + nu*Vsy[j]*divv_local[index+Nz]);
+
+	     // velz, Sy = 0;	   
+
+	     index2 = ((i_local-1)*Ny + j) * Nz + k+1;
+	     Sx = Sx_local[index2];	  
+	     
+	     dotSqVq = Vqx[i_local]*Sx + Vsz[k]*Sz_local[index];	   
+	     
+	     velz_local[index] = //exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2))/2)* 
+	       CM1z[index]*(Sz_local[index]
+			    - CM2z[index]*dotSqVq
+			    + nu*Vsz[k]*divv_local[index+1]);
+	   }
 
 	   trans_local = velx_local;
 	   fftw_execute(iPlanSTx);
@@ -1285,6 +1708,28 @@ int main(int argc, char* argv[]) {
 	   fftw_execute(iPlanSTz);
 	   velz_local = trans_local;
 
+	   // HERREE
+	   //HEREEE
+	   // DELT THISSS
+	   // DELEEEEETTTTT
+
+
+	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ ) 
+	   {
+	     index =  (i_local*Ny + j)*Nz + k;
+	   
+	     divv_local[index] = scale*divv_local[index];
+
+	   }}}
+
+
+	   trans_local = divv_local;
+	   fftw_execute(iPlanCT);
+	   divv_local = trans_local;
+
+
 	   /* COMPUTE: CURRENT Nr_local (S)*/
 
 	   for ( i_local = 0; i_local < local_n0; i_local++ ){
@@ -1295,20 +1740,25 @@ int main(int argc, char* argv[]) {
 	   for ( k = 0; k < Nz; k++ ) 
 	   {
 	     index =  (i_local*Ny + j)*Nz + k;
-	     Nr_local[index] = beta*pow(psi_local[index],3)
-	       - gamma*pow(psi_local[index],5)
+	     Nl_local[index] = (beta*pow(psi_local[index],3)
+				- gamma*pow(psi_local[index],5)) // /std::max(rho_local[index],rho_lim)
 	       - velx_local[index]*psiGradx_local[index]
 	       - vely_local[index]*psiGrady_local[index]
 	       - velz_local[index]*psiGradz_local[index];
+
+	     Nl_local[index] += pow(amp_r,2)*p_local[index]*psi_local[index]/pow(std::max(rho_local[index],rho_lim),3);
+	  
 	   }}}
 
 	   /* Obtain current Nq_local */
 
-	   fftw_execute(planN);	
+	   trans_local = Nl_local;
+	   fftw_execute(planCT);	
+	   Nl_local = trans_local;
 
 	   /* COMPUTE: SECOND DERIVATIVES AND PF VELOCITY */
 
-	   if (countL1 == 100 & countSave == 9) {
+	   if (countL1 == 50 & countSave == 3) {
 
 	     for ( i_local = 0; i_local < local_n0; i_local++ ){
 
@@ -1318,7 +1768,7 @@ int main(int argc, char* argv[]) {
 	       index =  (i_local*Ny + j)*Nz + k;
 
 	       dTpsi_local[index] = (aLin[index]*psiq_local[index]
-				     +scale*Nq_local[index]);
+				     +scale*Nl_local[index]);
 
 	       psiDxx_local[index] = -Vqx[i_local]*Vqx[i_local]*psiq_local[index];
 
@@ -1346,9 +1796,24 @@ int main(int argc, char* argv[]) {
 
 	   }
 
-	   // if (tst == 0){
-	   //   NqPast_local = Nq_local;
-	   //}
+
+	   /* Divide psi by rho and move to FS */
+
+	   /*
+	   for ( i_local = 0; i_local < local_n0; i_local++ ){
+
+	   for ( j = 0; j < Ny; j++ ) {
+	   for ( k = 0; k < Nz; k++ )
+	   {
+	     index =  (i_local*Ny + j)*Nz + k;
+
+	     trans_local[index] = psi_local[index]/std::max(rho_local[index],rho_lim);
+
+	   }}}	
+
+	   fftw_execute(planCT);
+	   psiq_local = trans_local;
+	   */
 
 	   /* COMPUTE: NEW PSI IN FOURIER SPACE (CN/AB scheme) */
 
@@ -1361,21 +1826,28 @@ int main(int argc, char* argv[]) {
 
 	     psiq_local[index] = 
 	       (C1[index]*psiq_local[index]
-		+ dtd2*scale*(3.0*Nq_local[index]-NqPast_local[index]))/C2[index];
+		+ dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
+
 	   }}}	
 		 
 	   /** Obtain new psi in real space **/
 
-	   fftw_execute(iPlanPsi);
+	   psi_old_local = psi_local;
 
+	   trans_local = psiq_local;
+	   fftw_execute(iPlanCT);
+	   psi_local = trans_local;
 		 
 	   /* COMPUTE: L1 (under count condition) */
 		 
-	   if ( countL1 == 100 )
+	   if ( countL1 == 50 )
 	   {
 
 	     sumA_local = 0.0; sumB_local = 0.0;
 	     sumA = 0.0;       sumB = 0.0;
+
+	     rho_sum_local = 0.0;
+	     rho_sum = 0.0;
 
 	     for ( i_local = 0; i_local < local_n0; i_local++ ) {
 	     for ( j = 0; j < Ny; j++ ) {
@@ -1384,13 +1856,18 @@ int main(int argc, char* argv[]) {
 	       index = (i_local*Ny + j) * Nz + k;
 		   
 	       sumA_local = sumA_local  
-		 + fabs(psiNew_local[index] - psi_local[index]);
+		 + fabs(psi_local[index] - psi_old_local[index]);
 		     
-	       sumB_local = sumB_local + fabs(psiNew_local[index]);
+	       sumB_local = sumB_local + fabs(psi_local[index]);
+
+	       rho_sum_local = rho_sum_local + rho_local[index];
+
 	     }}}
 
 	     MPI::COMM_WORLD.Reduce(&sumA_local,&sumA,1,MPI::DOUBLE,MPI::SUM,0);
 	     MPI::COMM_WORLD.Reduce(&sumB_local,&sumB,1,MPI::DOUBLE,MPI::SUM,0);
+
+	     MPI::COMM_WORLD.Reduce(&rho_sum_local,&rho_sum,1,MPI::DOUBLE,MPI::SUM,0);
 
 	     if ( rank == 0)
 	     {
@@ -1399,6 +1876,13 @@ int main(int argc, char* argv[]) {
 	       assert(L1_output.is_open());
 	       L1_output << L1 << "\n";
 	       L1_output.close();
+
+	       rho_sum = rho_sum*dx*dx*dx;
+	       mass_output.open(strBox+"mass.dat",std::ios_base::app); // append result
+	       assert(mass_output.is_open());
+	       mass_output << rho_sum << "\n";
+	       mass_output.close();
+
 	     }
 
 	     MPI::COMM_WORLD.Bcast(&L1,1,MPI::DOUBLE,0);
@@ -1409,7 +1893,7 @@ int main(int argc, char* argv[]) {
 
 	     /* SAVE PSI & OBTAIN SURFACE INFO (under count condition) */
 
-	     if ( countSave == 10 )
+	     if ( countSave == 4 )
 	     { 
 			 			 
 		 /** Appropriate way to compute curvatures for a TFCD **/
@@ -1426,15 +1910,15 @@ int main(int argc, char* argv[]) {
 		   index = (i_local*Ny + j) * Nz + k;
 
 		   // 0.7 : results are better when looking for this 0
-		   if ( psi_local[index] > 0.7 & track == 0 ) 
+		   if ( psi_old_local[index] > 0.7 & track == 0 ) 
 		   {
 		     track = 1;
 		   }
-		   if ( psi_local[index] < 0.0 & track == 1 ) //std::abs(...) > 0.7
+		   if ( psi_old_local[index] < 0.0 & track == 1 ) //std::abs(...) > 0.7
 		   {
 		     k2 = k;
 
-		     if( std::abs(psi_local[index]) > std::abs(psi_local[index+1]) ) // >
+		     if( std::abs(psi_old_local[index]) > std::abs(psi_old_local[index+1]) ) // >
 		     {
 		       index = index + 1;
 		       k2 = k + 1;
@@ -1731,6 +2215,38 @@ int main(int argc, char* argv[]) {
 		  }
 
 
+		// Save pressure p for mid cross section
+
+		j = Ny/2;
+		for( k = 0; k < Nz ; k++ ){
+		for( i_local = 0; i_local < local_n0 ; i_local++ ){
+			index  = (i_local*Ny +j)*Nz + k;
+			index2 = i_local*Nz + k;
+			psiSlice_local[index2] = divv_local[index];
+		}}
+
+		MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
+					   psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
+
+		if (rank == 0 )
+		  {
+		    p_output.open(strBox+"p.dat",std::ios_base::app);
+									
+		    assert(p_output.is_open());
+
+
+		    for ( i = 0; i < Nx; i++ ) {
+		      for ( k = 0; k < Nz; k++ ) {
+			
+			index = i*Nz + k;
+			
+			p_output << psiSlice[index] << "\n";
+		      }}
+
+		    p_output.close();
+
+		  }
+
 		MPI::COMM_WORLD.Barrier();
 		
 		countSave = 0;
@@ -1738,8 +2254,6 @@ int main(int argc, char* argv[]) {
 		 } // End: countSave block
 		
 		 } // End: countL1 block
-
-		 psi_local = psiNew_local;
 
 	 } // End: time loop
 
@@ -1767,9 +2281,9 @@ int main(int argc, char* argv[]) {
 	
 	/** Destroy FFTW plans, cleanup **/
 
-  	fftw_destroy_plan(planPsi);
-  	fftw_destroy_plan(iPlanPsi);
-  	fftw_destroy_plan(planN);
+	//  	fftw_destroy_plan(planPsi);
+  	//fftw_destroy_plan(iPlanPsi);
+  	fftw_destroy_plan(planCT);
 
   	fftw_destroy_plan(planSTx);
   	fftw_destroy_plan(iPlanSTx);
