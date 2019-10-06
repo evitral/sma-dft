@@ -144,7 +144,7 @@ int main(int argc, char* argv[]) {
 	  + std::string("/save/");
 
 	std::ofstream psiMid_output, surf_output, velS_output, 
-	  curvH_output, curvK_output, sx_output, sy_output, sz_output, p_output;
+	  curvH_output, curvK_output, sx_output, sy_output, sz_output, divv_output, rho_output;
 
 	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nu";
 
@@ -184,8 +184,8 @@ int main(int argc, char* argv[]) {
 
 	double nu = atof(argv[1]);
 	double Amp = 1.328; 
-	double amp_r = 1/Amp;
-	double rho_lim = 0.1;
+	double rho_0 = 0.1;
+	double kp = 1;
 	
 /* Points per wavelength, time step */
 	
@@ -288,6 +288,10 @@ int main(int argc, char* argv[]) {
 /* Local data containers (advection) */
 
 	std::vector <double> Vsx(local_n0), Vsy(Ny), Vsz(Nz);
+
+	std::vector<double> psiGradx_local(alloc_local);
+	std::vector<double> psiGrady_local(alloc_local);
+	std::vector<double> psiGradz_local(alloc_local);
 	
 	std::vector<double> Sx_local(alloc_local);
 	std::vector<double> Sy_local(alloc_local);
@@ -321,6 +325,9 @@ int main(int argc, char* argv[]) {
 
 	std::vector<double> divv_local(alloc_local);	
 
+	std::vector<double> cahn(alloc_local);	
+	std::vector<double> dRho_local(alloc_local);	
+
        	// std::vector<double> psiGradx_old_local(alloc_local);
 	// std::vector<double> psiGrady_old_local(alloc_local);
 	// std::vector<double> psiGradz_old_local(alloc_local);
@@ -328,9 +335,6 @@ int main(int argc, char* argv[]) {
 
 /* Local data containers (surface info) */
 
-	std::vector<double> psiGradx_local(alloc_local);
-	std::vector<double> psiGrady_local(alloc_local);
-	std::vector<double> psiGradz_local(alloc_local);
 	std::vector<double> dTpsi_local(alloc_local);
 	std::vector<double> psiDxx_local(alloc_local);
 	std::vector<double> psiDyy_local(alloc_local);
@@ -633,11 +637,15 @@ int main(int argc, char* argv[]) {
 	  sy_output.close();
 	  sz_output.close();
 
-	/** Crete pressure output **/
+	/** Crete divv and rho outputs **/
 
-	  std::ofstream p_output(strBox+"p.dat");
-	  assert(p_output.is_open());
-	  p_output.close();
+	  std::ofstream divv_output(strBox+"divv.dat");
+	  assert(divv_output.is_open());
+	  divv_output.close();
+
+	  std::ofstream rho_output(strBox+"rho.dat");
+	  assert(rho_output.is_open());
+	  rho_output.close();
 
 	/** Create surf info outputs **/
 		
@@ -792,7 +800,8 @@ int main(int argc, char* argv[]) {
 	   index =  (i_local*Ny + j)*Nz + k;
 	   mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
 	   opSH = alpha*pow(mq2-q02,2);
-	   aLin[index] = ep - opSH; ;
+	   cahn[index] = kp*(q02+mq2);
+	   aLin[index] = ep - opSH + cahn[index];
 	   C1[index] = (1.0+dtd2*aLin[index]);
 	   C2[index] = (1.0-dtd2*aLin[index]);
 	   
@@ -927,6 +936,7 @@ int main(int argc, char* argv[]) {
 	     // psiq_local[index] = scale*psiq_local[index];
 
 	     Sp2_local[index] = -aLin[index]*psiq_local[index];	    	    	    
+	     dRho_local[index] = 2*cahn[index]*psiq_local[index];
 	   
 	   }}}	
 
@@ -937,6 +947,11 @@ int main(int argc, char* argv[]) {
 	   trans_local = Sp2_local;
 	   fftw_execute(iPlanCT);
 	   Sp2_local = trans_local;
+
+	   trans_local = dRho_local;
+	   fftw_execute(iPlanCT);
+	   dRho_local = trans_local;
+
 
 	   /** COMPUTE: gradient of psi **/
 	   // partial_x psi (parallelized direction)
@@ -1061,10 +1076,10 @@ int main(int argc, char* argv[]) {
 	   {
 	     index =  (i_local*Ny + j)*Nz + k;
 	   
-	     rho_local[index] = amp_r*sqrt(pow(psi_local[index],2)
-					   +pow(psiGradx_local[index],2)
-					   +pow(psiGrady_local[index],2)
-					   +pow(psiGradz_local[index],2));
+	     rho_local[index] = kp*(q02*pow(psi_local[index],2)
+				    +pow(psiGradx_local[index],2)
+				    +pow(psiGrady_local[index],2)
+				    +pow(psiGradz_local[index],2)+rho_0);
 	     	       
 	   }}}
 
@@ -1093,14 +1108,12 @@ int main(int argc, char* argv[]) {
 	   {
 	     index =  (i_local*Ny + j)*Nz + k;
 
-	     mu = -pow(amp_r,2)*p_local[index]*psi_local[index]/
-	       pow(std::max(rho_local[index],rho_lim),2)
+	     mu = -p_local[index]*dRho_local[index]/rho_local[index]
 	       +Sp2_local[index] - beta*pow(psi_local[index],3)
 	       + gamma*pow(psi_local[index],5);
 	   
-	     divv_local[index] = 0;
-	     // pow(amp_r,2)*psi_local[index]*mu
-	     //  /pow(std::max(rho_local[index],rho_lim),2);	     	       
+	     divv_local[index] =
+	       dRho_local[index]*mu/rho_local[index];
 	   }}}
 
 	   trans_local = divv_local;
@@ -1123,7 +1136,7 @@ int main(int argc, char* argv[]) {
 	   }}}
 
 	   } else{
-	     std::fill(rho_local.begin(),rho_local.end(),amp_r*Amp); 
+	     std::fill(rho_local.begin(),rho_local.end(),1); 
 	   }
 
 	   
@@ -1763,12 +1776,12 @@ int main(int argc, char* argv[]) {
 	   {
 	     index =  (i_local*Ny + j)*Nz + k;
 	     Nl_local[index] = (beta*pow(psi_local[index],3)
-				- gamma*pow(psi_local[index],5)) // /std::max(rho_local[index],rho_lim)
+				- gamma*pow(psi_local[index],5)) 
 	       - velx_local[index]*psiGradx_local[index]
 	       - vely_local[index]*psiGrady_local[index]
 	       - velz_local[index]*psiGradz_local[index];
 
-	     //	     Nl_local[index] += pow(amp_r,2)*p_local[index]*psi_local[index]/pow(std::max(rho_local[index],rho_lim),2);
+	     Nl_local[index] += p_local[index]*dRho_local[index]/rho_local[index];
 	  
 	   }}}
 
@@ -2252,9 +2265,9 @@ int main(int argc, char* argv[]) {
 
 		if (rank == 0 )
 		  {
-		    p_output.open(strBox+"p.dat",std::ios_base::app);
+		    divv_output.open(strBox+"divv.dat",std::ios_base::app);
 									
-		    assert(p_output.is_open());
+		    assert(divv_output.is_open());
 
 
 		    for ( i = 0; i < Nx; i++ ) {
@@ -2262,12 +2275,47 @@ int main(int argc, char* argv[]) {
 			
 			index = i*Nz + k;
 			
-			p_output << psiSlice[index] << "\n";
+			divv_output << psiSlice[index] << "\n";
 		      }}
 
-		    p_output.close();
+		    divv_output.close();
 
 		  }
+
+
+
+		// Save density rho for mid cross section
+
+		j = Ny/2;
+		for( k = 0; k < Nz ; k++ ){
+		for( i_local = 0; i_local < local_n0 ; i_local++ ){
+			index  = (i_local*Ny +j)*Nz + k;
+			index2 = i_local*Nz + k;
+			psiSlice_local[index2] = rho_local[index];
+		}}
+
+		MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
+					   psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
+
+		if (rank == 0 )
+		  {
+		    rho_output.open(strBox+"rho.dat",std::ios_base::app);
+									
+		    assert(rho_output.is_open());
+
+
+		    for ( i = 0; i < Nx; i++ ) {
+		      for ( k = 0; k < Nz; k++ ) {
+			
+			index = i*Nz + k;
+			
+			rho_output << psiSlice[index] << "\n";
+		      }}
+
+		    rho_output.close();
+
+		  }
+
 
 		MPI::COMM_WORLD.Barrier();
 		

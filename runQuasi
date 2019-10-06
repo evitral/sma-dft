@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -J qnu10e0d67flat
-#SBATCH -o qnu10e0d67flat.%j.out
+#SBATCH -J qnu10e0d68flat
+#SBATCH -o qnu10e0d68flat.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
@@ -28,4 +28,4 @@ echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
 mpicxx -I $BUILD/include -O3 -o adv/quasi-test adv/quasi-test.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./adv/quasi-test 10 67 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/result.out
+ibrun -np 16 ./adv/quasi-test 10 68 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/result.out
