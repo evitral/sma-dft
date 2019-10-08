@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 
 	std::string strPsi = "psi";
 	
-	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nu";
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-nu";
 	
 	strLoad += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("/save/");
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
 	std::ofstream psiMid_output, surf_output, velS_output, 
 	  curvH_output, curvK_output, sx_output, sy_output, sz_output, divv_output, rho_output;
 
-	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nu";
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-nu";
 
 	strBox += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("/");
@@ -521,7 +521,7 @@ int main(int argc, char* argv[]) {
 	std::fill(psi_local.begin(),psi_local.end(),0);  
 
 	double Qi  = 0.125/2; // Perturbation wavelength
-	double Ap = 16;
+	double Ap = Nw;
 
 
 	for ( i_local = 0; i_local < local_n0; i_local++ ) {
@@ -801,7 +801,7 @@ int main(int argc, char* argv[]) {
 	   mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
 	   opSH = alpha*pow(mq2-q02,2);
 	   cahn[index] = kp*(q02+mq2);
-	   aLin[index] = ep - opSH + cahn[index];
+	   aLin[index] = ep - opSH;
 	   C1[index] = (1.0+dtd2*aLin[index]);
 	   C2[index] = (1.0-dtd2*aLin[index]);
 	   
@@ -1079,7 +1079,7 @@ int main(int argc, char* argv[]) {
 	     rho_local[index] = kp*(q02*pow(psi_local[index],2)
 				    +pow(psiGradx_local[index],2)
 				    +pow(psiGrady_local[index],2)
-				    +pow(psiGradz_local[index],2)+rho_0);
+				    +pow(psiGradz_local[index],2))+rho_0;
 	     	       
 	   }}}
 
@@ -1108,7 +1108,7 @@ int main(int argc, char* argv[]) {
 	   {
 	     index =  (i_local*Ny + j)*Nz + k;
 
-	     mu = -p_local[index]*dRho_local[index]/rho_local[index]
+	     mu = -p_local[index]*dRho_local[index]/pow(rho_local[index],2)
 	       +Sp2_local[index] - beta*pow(psi_local[index],3)
 	       + gamma*pow(psi_local[index],5);
 	   
@@ -1120,20 +1120,16 @@ int main(int argc, char* argv[]) {
 	   fftw_execute(planCT);
 	   divv_local = trans_local;
 
-	   for ( i_local = 0; i_local < local_n0; i_local++ ){
-	   for ( j = 0; j < Ny; j++ ) {
-	   for ( k = 0; k < Nz; k++ ) 
-	   {
-	     index =  (i_local*Ny + j)*Nz + k;
+	   // for ( i_local = 0; i_local < local_n0; i_local++ ){
+	   // for ( j = 0; j < Ny; j++ ) {
+	   // for ( k = 0; k < Nz; k++ ) 
+	   // {
+	   //   index =  (i_local*Ny + j)*Nz + k;
 	   
-	     divv_local[index] = divv_local[index]*
-	       1;//exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2);
-
-	     // if (pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2) > 0.1){
-	     //   divv_local[index] = 0;
-	     // }
+	   //   divv_local[index] = divv_local[index]*
+	   //     exp(-1.57*1.57*(pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2))/2);
 	     	       
-	   }}}
+	   // }}}
 
 	   } else{
 	     std::fill(rho_local.begin(),rho_local.end(),1); 
@@ -1781,7 +1777,7 @@ int main(int argc, char* argv[]) {
 	       - vely_local[index]*psiGrady_local[index]
 	       - velz_local[index]*psiGradz_local[index];
 
-	     Nl_local[index] += p_local[index]*dRho_local[index]/rho_local[index];
+	     Nl_local[index] += p_local[index]*dRho_local[index]/pow(rho_local[index],2);
 	  
 	   }}}
 

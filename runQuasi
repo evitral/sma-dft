@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -J qnu10e0d68flat
-#SBATCH -o qnu10e0d68flat.%j.out
+#SBATCH -J qn10e0d7nw16
+#SBATCH -o qn10e0d7nw16.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
@@ -20,12 +20,12 @@ module load gnutools
 module load intel/2016.3.210 mvapich2_ib
 module load fftw
 #module list
-#cd /home/evitral/sma-dft/no-adv/
+#cd /home/evitral/sma-dft/quasi/
 
 echo " "
 echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -I $BUILD/include -O3 -o adv/quasi-test adv/quasi-test.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./adv/quasi-test 10 68 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/result.out
+mpicxx -I $BUILD/include -O3 -o quasi/quasi-test quasi/quasi-test.cpp -L $BUILD/lib $LIBS
+ibrun -np 16 ./quasi/quasi-test 10 70 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/resultnw16e0d7.out
