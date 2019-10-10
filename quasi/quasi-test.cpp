@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 
 	std::string strPsi = "psi";
 	
-	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-nu";
+	std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-q32-w8-nu";
 	
 	strLoad += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("/save/");
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
 	std::ofstream psiMid_output, surf_output, velS_output, 
 	  curvH_output, curvK_output, sx_output, sy_output, sz_output, divv_output, rho_output;
 
-	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-nu";
+	std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-q32-w8-nu";
 
 	strBox += argv[1] + std::string("-e0d") + argv[2] 
 	  + std::string("/");
@@ -520,8 +520,8 @@ int main(int argc, char* argv[]) {
 
 	std::fill(psi_local.begin(),psi_local.end(),0);  
 
-	double Qi  = 0.125/2; // Perturbation wavelength
-	double Ap = Nw;
+	double Qi  = 0.125*2; // Perturbation wavelength (was over 2)
+	double Ap = 2*Nw;
 
 
 	for ( i_local = 0; i_local < local_n0; i_local++ ) {
