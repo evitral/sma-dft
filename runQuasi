@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -J qn10e0d7nw16q32w8
-#SBATCH -o qn10e0d7nw16q32w8.%j.out
+#SBATCH -J qn10e0d7nw16stress
+#SBATCH -o qn10e0d7nw16stress.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
@@ -27,5 +27,5 @@ echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -I $BUILD/include -O3 -o quasi/quasi-test quasi/quasi-test.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./quasi/quasi-test 10 70 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/resultq32w8.out
+mpicxx -I $BUILD/include -O3 -o quasi/quasi quasi/quasi.cpp -L $BUILD/lib $LIBS
+ibrun -np 16 ./quasi/quasi 10 70 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/resultStress.out
