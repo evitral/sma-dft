@@ -1121,7 +1121,7 @@ int main(int argc, char* argv[]) {
 
 	   /** Density constitutive law **/
 
-	   if (nLoop > 45 || load == 1){
+	   if (nLoop > 0 || load == 1){
 
 	   for ( i_local = 0; i_local < local_n0; i_local++ ){
 	   for ( j = 0; j < Ny; j++ ) {
