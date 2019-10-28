@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
   std::ofstream psiMid_output, surf_output, velS_output, 
     curvH_output, curvK_output, sx_output, sy_output, sz_output, divv_output, rho_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw16-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 512, Ny = 512, Nz = 512;
+  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -180,11 +180,12 @@ int main(int argc, char* argv[]) {
   double Amp = 1.328; 
   double rho_0 = 0.1;
   double kp = 1;
+  double rho_m = (kp*pow(Amp,2)+rho_0)/2;
 	
 /* Points per wavelength, time step */
 	
-  const int    Nw = 16;
-  const double dt = 0.0005; // 0.0005 (nw 16)	
+  const int    Nw = 8;
+  const double dt = 0.005; // 0.0005 (nw 16)	
   const double dtd2  = dt/2;
 
 /* System size and scaling for FFT */
@@ -320,22 +321,14 @@ int main(int argc, char* argv[]) {
   std::vector<double> mq2c(alloc_local);	
   std::vector<double> dRho_local(alloc_local);	
 
-  std::vector<double> lapRho_local(alloc_local);
-
   std::vector<double> psiLapDx_local(alloc_local);
   std::vector<double> psiLapDy_local(alloc_local);
   std::vector<double> psiLapDz_local(alloc_local);
 
-  std::vector<double> rhoDx_local(alloc_local);
-  std::vector<double> rhoDy_local(alloc_local);
-  std::vector<double> rhoDz_local(alloc_local);
-
   std::vector<double> dfDlapPsi_local(alloc_local);
   std::vector<double> lapRhoDfDlapPsi_local(alloc_local);
 
-
-  // std::vector<double> Sp2_local(alloc_local);
-
+  std::vector<double> psiq_old_local(alloc_local);
 
 /* Local data containers (surface info) */
 
@@ -797,9 +790,9 @@ int main(int argc, char* argv[]) {
 	   
       mq2c[index] = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
       opSH = alpha*pow(q02-mq2c[index],2);
-      aLin[index] = ep - opSH;
-      C1[index] = (1.0+dtd2*aLin[index]);
-      C2[index] = (1.0-dtd2*aLin[index]);
+      aLin[index] = -ep + opSH;
+      C1[index] = (2.0+dt*rho_m*aLin[index]);
+      C2[index] = (1.5+dt*rho_m*aLin[index]);
 	   
       mq2 = pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);		
       CM1x[index] = scale/(nu*mq2);
@@ -838,6 +831,8 @@ int main(int argc, char* argv[]) {
       - gamma*pow(psi_local[index],5); // + psiNew_local[index]*wall[index];
   }}}
   //
+
+  psiq_old_local = psiq_local; // first time step
 
 
  /* Move Nl_local to Fourier Space */
@@ -910,11 +905,6 @@ int main(int argc, char* argv[]) {
     std::fill(vely_local.begin(),vely_local.end(),0);
     std::fill(velz_local.begin(),velz_local.end(),0);
 
-    std::fill(rhoDx_local.begin(),rhoDx_local.end(),0);
-    std::fill(rhoDy_local.begin(),rhoDy_local.end(),0);
-    std::fill(rhoDz_local.begin(),rhoDz_local.end(),0);
-
-
     /** Previous Nq_local is now NqPast_local  **/
 
     Nl_old_local = Nl_local;
@@ -932,16 +922,10 @@ int main(int argc, char* argv[]) {
 	*exp(-1.57*1.57*mq2c[index]/2);
 
       dfDlapPsi_local[index] = alpha*(q02-mq2c[index])*psiq_local[index];
-
-      //Sp2_local[index] = alpha*pow(q02-mq2c[index],2)*psiq_local[index];;
 	   
     }}}	
 
     /** Move psi and derivatives back to real space **/
-
-    trans_local = psiq_local;
-    fftw_execute(iPlanCT);
-    psi_local = trans_local;
 
     trans_local = dRho_local;
     fftw_execute(iPlanCT);
@@ -950,11 +934,6 @@ int main(int argc, char* argv[]) {
     trans_local = dfDlapPsi_local;
     fftw_execute(iPlanCT);
     dfDlapPsi_local = trans_local;
-
-    // trans_local = Sp2_local;
-    // fftw_execute(iPlanCT);
-    // Sp2_local = trans_local;
-
 
     /** COMPUTE: gradient of psi **/
     // partial_x psi (parallelized direction)
@@ -1127,121 +1106,13 @@ int main(int argc, char* argv[]) {
 	rho_local[index] = scale*rho_local[index]
 	  *exp(-1.57*1.57*mq2c[index]/2);	     	       
 
-	lapRho_local[index] = -mq2c[index]*rho_local[index];
       }}}
 
-      /** COMPUTE: gradient of rho **/
-      // partial_x rho (parallelized direction)
-
-      i_local = 0;
-	 
-      for( j = 0; j < Ny; j++ ){
-      for( k = 0; k < Nz; k++ ){
-
-	index2 = (i_local*Ny + j) * Nz + k;
-	index = j*Nz + k;
-
-	psi_back[index] = rho_local[index2];
-
-      }}
-
-      if (rank == size-1){
-	   
-	MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
-			     MPI::DOUBLE,rank-1,0);
-	   
-      } else if (rank % 2 != 0){
-
-	MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
-			     MPI::DOUBLE,rank-1,0);
-
-	MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
-			     MPI::DOUBLE,rank+1,0);
-
-      } else if (rank != 0){
-
-	MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
-			     MPI::DOUBLE,rank+1,0);
-
-	MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
-			     MPI::DOUBLE,rank-1,0);
-
-      } else {
-
-	MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
-			     MPI::DOUBLE,rank+1,0);
-      }		 	 
-
-      if (rank != size-1 ) 
-      {
-		   
-	i_local = local_n0-1;
-		 
-	for ( j = 0; j < Ny; j++ ) {
-	for ( k = 0; k < Nz; k++ )
-	{	     
-	  index = (i_local*Ny + j) * Nz + k;	     
-	  index2 = j * Nz + k;
-
-	  rhoDx_local[index] = -Vsx[i_local]*psi_front[index2];
-	}}
-      }
-	 
-      for ( i_local = 0; i_local < local_n0-1; i_local++ ) {
-      for ( j = 0; j < Ny; j++ ) {
-      for ( k = 0; k < Nz; k++ )
-      {
-	index = (i_local*Ny + j) * Nz + k;
-	index2 = ((i_local+1)*Ny + j) * Nz + k;
-	   
-	rhoDx_local[index] = -Vsx[i_local]*rho_local[index2];
-      }}}
-
-      // partial_y rho
-
-      for ( i_local = 0; i_local < local_n0; i_local++ ){
-      for ( j = 0; j < Ny-1; j++ ) {
-      for ( k = 0; k < Nz; k++ )
-      {
-	index =  (i_local*(Ny) + j)*(Nz) + k;
-	index2 =  (i_local*(Ny) + j+1)*(Nz) + k;
-	 
-	rhoDy_local[index] = -Vsy[j]*rho_local[index2];	   
-      }}}	
-
-      // partial_z rho
-
-      for ( i_local = 0; i_local < local_n0; i_local++ ){
-      for ( j = 0; j < Ny; j++ ) {
-      for ( k = 0; k < Nz-1; k++ )
-      {
-	index =  (i_local*(Ny) + j)*(Nz) + k;	 
-	index2 =  (i_local*(Ny) + j)*(Nz) + k+1;	 
-	    
-	rhoDz_local[index] = -Vsz[k]*rho_local[index2];	   
-      }}}	
-
-      // Move rho and derivatives to real space
+      // Move filtered rho to real space
 
       trans_local = rho_local;
       fftw_execute(iPlanCT);
       rho_local = trans_local;
-
-      trans_local = lapRho_local;
-      fftw_execute(iPlanCT);
-      lapRho_local = trans_local;
-
-      trans_local = rhoDx_local;
-      fftw_execute(iPlanSTx);
-      rhoDx_local = trans_local;
-
-      trans_local = rhoDy_local;
-      fftw_execute(iPlanSTy);
-      rhoDy_local = trans_local;
-
-      trans_local = rhoDz_local;
-      fftw_execute(iPlanSTz);
-      rhoDz_local = trans_local;
 
 
       /* Compute lapRhoDfDlapPsi */
@@ -1250,9 +1121,9 @@ int main(int argc, char* argv[]) {
       for ( j = 0; j < Ny; j++ ) {
       for ( k = 0; k < Nz; k++ ) 
       {
-	index =  (i_local*Ny + j)*Nz + k;
+      	index =  (i_local*Ny + j)*Nz + k;
 
-	lapRhoDfDlapPsi_local[index] = rho_local[index]*dfDlapPsi_local[index];
+      	lapRhoDfDlapPsi_local[index] = rho_local[index]*dfDlapPsi_local[index];
       }}}
 
       trans_local = lapRhoDfDlapPsi_local;
@@ -1263,9 +1134,10 @@ int main(int argc, char* argv[]) {
       for ( j = 0; j < Ny; j++ ) {
       for ( k = 0; k < Nz; k++ ) 
       {
-	index =  (i_local*Ny + j)*Nz + k;
+      	index =  (i_local*Ny + j)*Nz + k;
 
-	lapRhoDfDlapPsi_local[index] = -scale*mq2c[index]*lapRhoDfDlapPsi_local[index];
+      	lapRhoDfDlapPsi_local[index] = 
+	  -scale*mq2c[index]*lapRhoDfDlapPsi_local[index];
       }}}
 
       trans_local = lapRhoDfDlapPsi_local;
@@ -1281,9 +1153,11 @@ int main(int argc, char* argv[]) {
 	index =  (i_local*Ny + j)*Nz + k;
 
 	mu = -p_local[index]*dRho_local[index]/pow(rho_local[index],2)
-	  +dfDlapPsi_local[index] + lapRhoDfDlapPsi_local[index]/rho_local[index]
-	  -ep*psi_local[index] - beta*pow(psi_local[index],3) + gamma*pow(psi_local[index],5);
+	  -ep*psi_local[index] +dfDlapPsi_local[index] 
+	  + lapRhoDfDlapPsi_local[index]
+	  - beta*pow(psi_local[index],3) + gamma*pow(psi_local[index],5);
 	   
+	// Need to modify it for actual dot rho
 	divv_local[index] =
 	  dRho_local[index]*mu/rho_local[index];
       }}}
@@ -1408,8 +1282,9 @@ int main(int argc, char* argv[]) {
       }
 	     
       if (i*j*k > 0){
-	p_local[index] = -scale*(Vqx[i_local]*Sx+Vqy[j]*Sy+Vqz[k]*Sz)/
-	  (pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2));
+	p_local[index] = 
+	  scale*(-(Vqx[i_local]*Sx+Vqy[j]*Sy+Vqz[k]*Sz)/mq2c[index]
+		 +(4/3)*nu*divv_local[index]);
       } else {
 	p_local[index] = 0;
       }
@@ -1905,19 +1780,21 @@ int main(int argc, char* argv[]) {
       for ( k = 0; k < Nz; k++ ) 
       {
 	index =  (i_local*Ny + j)*Nz + k;
-	Nl_local[index] = 
-	  //-lapRhoDfDlapPsi_local[index]/rho_local[index] + Sp2_local[index]
-	  -(lapRho_local[index]*dfDlapPsi_local[index]
-	    +2*(rhoDx_local[index]*(q02*psiGradx_local[index]+psiLapDx_local[index])
-		+rhoDy_local[index]*(q02*psiGrady_local[index]+psiLapDy_local[index])
-		+rhoDz_local[index]*(q02*psiGradz_local[index]+psiLapDz_local[index])
-		))/rho_local[index]
-	  + beta*pow(psi_local[index],3) - gamma*pow(psi_local[index],5) 
+	Nl_local[index] = rho_local[index]*
+	  (ep*psi_local[index]-dfDlapPsi_local[index] 
+	   + beta*pow(psi_local[index],3) - gamma*pow(psi_local[index],5))
+	  - lapRhoDfDlapPsi_local[index]
 	  - velx_local[index]*psiGradx_local[index]
 	  - vely_local[index]*psiGrady_local[index]
 	  - velz_local[index]*psiGradz_local[index];
 
-	Nl_local[index] += p_local[index]*dRho_local[index]/pow(rho_local[index],2);	  
+	Nl_local[index] += p_local[index]*dRho_local[index]/
+	  (kp*(pow(psi_local[index],2)+(1/3)
+	       *(pow(psiGradx_local[index],2)
+	       +pow(psiGrady_local[index],2)
+	       +pow(psiGradz_local[index],2)
+		 ))+rho_0);
+	  //rho_local[index];	  
       }}}
 
     /* Obtain current Nq_local */
@@ -1974,6 +1851,8 @@ int main(int argc, char* argv[]) {
  
     /* COMPUTE: NEW PSI IN FOURIER SPACE (CN/AB scheme) */
 
+    trans_local = psiq_local;
+
     for ( i_local = 0; i_local < local_n0; i_local++ ){
     for ( j = 0; j < Ny; j++ ) {
     for ( k = 0; k < Nz; k++ )
@@ -1981,10 +1860,12 @@ int main(int argc, char* argv[]) {
       index =  (i_local*Ny + j)*Nz + k;
 
       psiq_local[index] = 
-	(C1[index]*psiq_local[index]
+	(C1[index]*psiq_local[index] - 0.5*psiq_old_local[index]
 	 + dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
     }}}	
 		 
+    psiq_old_local = trans_local;
+
     /** Obtain new psi in real space **/
 
     psi_old_local = psi_local;
