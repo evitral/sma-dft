@@ -179,13 +179,13 @@ int main(int argc, char* argv[]) {
   double nu = atof(argv[1]);
   double Amp = 1.328; 
   double rho_0 = 0.1;
-  double kp = 1;
-  double rho_m = (kp*pow(Amp,2)+rho_0)/2;
+  double kp = 0.2;
+  double rho_m = (kp*pow(Amp,1)+rho_0)/2;
 	
 /* Points per wavelength, time step */
 	
   const int    Nw = 8;
-  const double dt = 0.005; // 0.0005 (nw 16)	
+  const double dt = 0.0005; // 0.0005 (nw 16)	
   const double dtd2  = dt/2;
 
 /* System size and scaling for FFT */
@@ -314,6 +314,8 @@ int main(int argc, char* argv[]) {
 /* Local data containers (density) */
 
   std::vector<double> rho_local(alloc_local);
+  std::vector<double> rho_old_local(alloc_local);
+
   std::vector<double> p_local(alloc_local);	
 
   std::vector<double> divv_local(alloc_local);	
@@ -324,6 +326,10 @@ int main(int argc, char* argv[]) {
   std::vector<double> psiLapDx_local(alloc_local);
   std::vector<double> psiLapDy_local(alloc_local);
   std::vector<double> psiLapDz_local(alloc_local);
+
+  std::vector<double> rhoDx_local(alloc_local);
+  std::vector<double> rhoDy_local(alloc_local);
+  std::vector<double> rhoDz_local(alloc_local);
 
   std::vector<double> dfDlapPsi_local(alloc_local);
   std::vector<double> lapRhoDfDlapPsi_local(alloc_local);
@@ -827,6 +833,18 @@ int main(int argc, char* argv[]) {
 
     psiq_local[index] = scale*psiq_local[index];
 
+  }}}
+
+  trans_local = psiq_local;
+  fftw_execute(iPlanCT);
+  psi_local = trans_local;
+
+  for ( i_local = 0; i_local < local_n0; i_local++ ){
+  for ( j = 0; j < Ny; j++ ) {
+  for ( k = 0; k < Nz; k++ )
+  {
+    index =  (i_local*Ny + j)*Nz + k;
+
     Nl_local[index] = beta*pow(psi_local[index],3)
       - gamma*pow(psi_local[index],5); // + psiNew_local[index]*wall[index];
   }}}
@@ -882,6 +900,23 @@ int main(int argc, char* argv[]) {
   }
 
 
+    /** Empty out containers **/
+
+    std::fill(divv_local.begin(),divv_local.end(),0);
+
+    std::fill(psiGradx_local.begin(),psiGradx_local.end(),0);
+    std::fill(psiGrady_local.begin(),psiGrady_local.end(),0);
+    std::fill(psiGradz_local.begin(),psiGradz_local.end(),0);
+
+    std::fill(rhoDx_local.begin(),rhoDx_local.end(),0);
+    std::fill(rhoDy_local.begin(),rhoDy_local.end(),0);
+    std::fill(rhoDz_local.begin(),rhoDz_local.end(),0);
+
+    std::fill(velx_local.begin(),velx_local.end(),0);
+    std::fill(vely_local.begin(),vely_local.end(),0);
+    std::fill(velz_local.begin(),velz_local.end(),0);
+
+
  /********************************************
   *                                          *
   *   Time Loop (L1 as dynamics criterion)   *
@@ -901,10 +936,6 @@ int main(int argc, char* argv[]) {
     std::fill(psiGrady_local.begin(),psiGrady_local.end(),0);
     std::fill(psiGradz_local.begin(),psiGradz_local.end(),0);
 
-    std::fill(velx_local.begin(),velx_local.end(),0);
-    std::fill(vely_local.begin(),vely_local.end(),0);
-    std::fill(velz_local.begin(),velz_local.end(),0);
-
     /** Previous Nq_local is now NqPast_local  **/
 
     Nl_old_local = Nl_local;
@@ -918,8 +949,8 @@ int main(int argc, char* argv[]) {
 
       index =  (i_local*(Ny) + j)*(Nz) + k;
 
-      dRho_local[index] = 2*kp*(q02+mq2c[index])*psiq_local[index]
-	*exp(-1.57*1.57*mq2c[index]/2);
+      dRho_local[index] = 2*kp*(q02+mq2c[index])*psiq_local[index];
+	//	*exp(-1.57*1.57*mq2c[index]/2);
 
       dfDlapPsi_local[index] = alpha*(q02-mq2c[index])*psiq_local[index];
 	   
@@ -1079,6 +1110,7 @@ int main(int argc, char* argv[]) {
 
     /** Density constitutive law **/
 
+
     if (nLoop > 0 || load == 1){
 
       for ( i_local = 0; i_local < local_n0; i_local++ ){
@@ -1087,15 +1119,29 @@ int main(int argc, char* argv[]) {
       {
 	index =  (i_local*Ny + j)*Nz + k;
 	   
-	rho_local[index] = kp*(q02*pow(psi_local[index],2)
+	rho_local[index] = kp*sqrt(q02*pow(psi_local[index],2)
 			       +pow(psiGradx_local[index],2)
 			       +pow(psiGrady_local[index],2)
 			       +pow(psiGradz_local[index],2))+rho_0;	     	       
+
+	if (nLoop > 50){
+	  divv_local[index] =
+	    velx_local[index]*rhoDx_local[index]
+	    + vely_local[index]*rhoDy_local[index]
+	    + velz_local[index]*rhoDz_local[index];
+	}
+
       }}}
 
       trans_local = rho_local;
       fftw_execute(planCT);
       rho_local = trans_local;
+
+      /** Empty rhoD containers **/
+
+      std::fill(rhoDx_local.begin(),rhoDx_local.end(),0);
+      std::fill(rhoDy_local.begin(),rhoDy_local.end(),0);
+      std::fill(rhoDz_local.begin(),rhoDz_local.end(),0);
 
       for ( i_local = 0; i_local < local_n0; i_local++ ){
       for ( j = 0; j < Ny; j++ ) {
@@ -1108,11 +1154,115 @@ int main(int argc, char* argv[]) {
 
       }}}
 
-      // Move filtered rho to real space
+
+      /** COMPUTE: gradient of rho **/
+      // partial_x rho (parallelized direction)
+
+      i_local = 0;
+	 
+      for( j = 0; j < Ny; j++ ){
+      for( k = 0; k < Nz; k++ ){
+
+      	index2 = (i_local*Ny + j) * Nz + k;
+      	index = j*Nz + k;
+
+      	psi_back[index] = rho_local[index2];
+
+      }}
+
+      if (rank == size-1){
+	   
+      	MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
+      			     MPI::DOUBLE,rank-1,0);
+	   
+      } else if (rank % 2 != 0){
+
+      	MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
+      			     MPI::DOUBLE,rank-1,0);
+
+      	MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
+      			     MPI::DOUBLE,rank+1,0);
+
+      } else if (rank != 0){
+
+      	MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
+      			     MPI::DOUBLE,rank+1,0);
+
+      	MPI::COMM_WORLD.Send(psi_back.data(),Nslice,
+      			     MPI::DOUBLE,rank-1,0);
+
+      } else {
+
+      	MPI::COMM_WORLD.Recv(psi_front.data(),Nslice,
+      			     MPI::DOUBLE,rank+1,0);
+      }		 	 
+
+      if (rank != size-1 ) 
+      {
+		   
+      	i_local = local_n0-1;
+		 
+      	for ( j = 0; j < Ny; j++ ) {
+      	for ( k = 0; k < Nz; k++ )
+      	{	     
+      	  index = (i_local*Ny + j) * Nz + k;	     
+      	  index2 = j * Nz + k;
+
+      	  rhoDx_local[index] = -Vsx[i_local]*psi_front[index2];
+      	}}
+      }
+	 
+      for ( i_local = 0; i_local < local_n0-1; i_local++ ) {
+      for ( j = 0; j < Ny; j++ ) {
+      for ( k = 0; k < Nz; k++ )
+      {
+      	index = (i_local*Ny + j) * Nz + k;
+      	index2 = ((i_local+1)*Ny + j) * Nz + k;
+	   
+      	rhoDx_local[index] = -Vsx[i_local]*rho_local[index2];
+      }}}
+
+      // partial_y rho
+
+      for ( i_local = 0; i_local < local_n0; i_local++ ){
+      for ( j = 0; j < Ny-1; j++ ) {
+      for ( k = 0; k < Nz; k++ )
+      {
+      	index =  (i_local*(Ny) + j)*(Nz) + k;
+      	index2 =  (i_local*(Ny) + j+1)*(Nz) + k;
+	 
+      	rhoDy_local[index] = -Vsy[j]*rho_local[index2];	   
+      }}}	
+
+      // partial_z rho
+
+      for ( i_local = 0; i_local < local_n0; i_local++ ){
+      for ( j = 0; j < Ny; j++ ) {
+      for ( k = 0; k < Nz-1; k++ )
+      {
+      	index =  (i_local*(Ny) + j)*(Nz) + k;	 
+      	index2 =  (i_local*(Ny) + j)*(Nz) + k+1;	 
+	    
+      	rhoDz_local[index] = -Vsz[k]*rho_local[index2];	   
+      }}}	
+
+      // Move rho and derivatives to real space
 
       trans_local = rho_local;
       fftw_execute(iPlanCT);
       rho_local = trans_local;
+
+      trans_local = rhoDx_local;
+      fftw_execute(iPlanSTx);
+      rhoDx_local = trans_local;
+
+      trans_local = rhoDy_local;
+      fftw_execute(iPlanSTy);
+      rhoDy_local = trans_local;
+
+      trans_local = rhoDz_local;
+      fftw_execute(iPlanSTz);
+      rhoDz_local = trans_local;
 
 
       /* Compute lapRhoDfDlapPsi */
@@ -1152,15 +1302,32 @@ int main(int argc, char* argv[]) {
       {
 	index =  (i_local*Ny + j)*Nz + k;
 
-	mu = -p_local[index]*dRho_local[index]/pow(rho_local[index],2)
-	  -ep*psi_local[index] +dfDlapPsi_local[index] 
-	  + lapRhoDfDlapPsi_local[index]
-	  - beta*pow(psi_local[index],3) + gamma*pow(psi_local[index],5);
+	mu = -p_local[index]*dRho_local[index]/rho_local[index]
+	  // (kp*(pow(psi_local[index],2)+(1/3)
+	  //      *(pow(psiGradx_local[index],2)
+	  // 	 +pow(psiGrady_local[index],2)
+	  // 	 +pow(psiGradz_local[index],2)
+	  //  	 ))+rho_0)	 
+	  +rho_local[index]*
+	  (-ep*psi_local[index]+dfDlapPsi_local[index] 
+	   - beta*pow(psi_local[index],3) + gamma*pow(psi_local[index],5))
+	  + lapRhoDfDlapPsi_local[index];
+
 	   
 	// Need to modify it for actual dot rho
-	divv_local[index] =
-	  dRho_local[index]*mu/rho_local[index];
+	if (nLoop > 50){
+	  divv_local[index] =
+	    ((rho_local[index]-rho_old_local[index])/dt+divv_local[index]) 
+	    /0.5*(rho_local[index]+rho_old_local[index]);
+	    //+ velx_local[index]*rhoDx_local[index]
+	    //+ vely_local[index]*rhoDy_local[index]
+	    //+ velz_local[index]*rhoDz_local[index])				
+	  //  dRho_local[index]*mu/rho_local[index];	 
+	}
+
       }}}
+
+      rho_old_local = rho_local;
 
       trans_local = divv_local;
       fftw_execute(planCT);
@@ -1296,6 +1463,12 @@ int main(int argc, char* argv[]) {
 
     /** COMPUTE: Velocity field **/
     // A. velx (parallelized direction)
+
+    /** Empty out velocity containers **/
+
+    std::fill(velx_local.begin(),velx_local.end(),0);
+    std::fill(vely_local.begin(),vely_local.end(),0);
+    std::fill(velz_local.begin(),velz_local.end(),0);
 
     // Send Sz and Sy i_local=0 data to previous rank
 
@@ -1788,13 +1961,13 @@ int main(int argc, char* argv[]) {
 	  - vely_local[index]*psiGrady_local[index]
 	  - velz_local[index]*psiGradz_local[index];
 
-	Nl_local[index] += p_local[index]*dRho_local[index]/
-	  (kp*(pow(psi_local[index],2)+(1/3)
-	       *(pow(psiGradx_local[index],2)
-	       +pow(psiGrady_local[index],2)
-	       +pow(psiGradz_local[index],2)
-		 ))+rho_0);
-	  //rho_local[index];	  
+	Nl_local[index] +=
+	   p_local[index]*dRho_local[index]/rho_local[index];	  
+	   // (kp*(pow(psi_local[index],2)+(1/3)
+	   //      *(pow(psiGradx_local[index],2)
+	   //      +pow(psiGrady_local[index],2)
+	   //      +pow(psiGradz_local[index],2)
+	   // 	 ))+rho_0);
       }}}
 
     /* Obtain current Nq_local */
@@ -1862,6 +2035,7 @@ int main(int argc, char* argv[]) {
       psiq_local[index] = 
 	(C1[index]*psiq_local[index] - 0.5*psiq_old_local[index]
 	 + dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
+
     }}}	
 		 
     psiq_old_local = trans_local;
