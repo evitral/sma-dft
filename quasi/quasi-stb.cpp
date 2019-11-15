@@ -1,7 +1,8 @@
 /********************************************
  *                                          *
- *               quasi.cpp                  *
+ *             quasi-stb.cpp                *
  *                                          *
+ *     Stability analysis for the           *  
  *     SmecticA 3D Phase Field FFTW in      *
  *     parallel. This code accounts for     *
  *     the complete model, but not          *
@@ -12,9 +13,9 @@
  *     (Curv): Save curvatures              *
  *     quasi: Quasi-incompressible eqns,    *
  *            varying density field         *        
+ *     stb: Stability (long and transv)     *
  *                                          *
- *                                          *
- *     Last mod: 10/10/2019                 *
+ *     Last mod: 11/11/2019                 *
  *     Author: Eduardo Vitral               *
  *                                          *
  ********************************************/
@@ -129,18 +130,28 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_stb/stb-nw16-Q3d0-phi0d1-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
 
-  std::ofstream psiMid_output, surf_output, velS_output, 
-    curvH_output, curvK_output, sx_output, sy_output, sz_output, divv_output, rho_output;
+  std::ofstream psiMid_output, surf_output, velS_output, info_output,
+    curvH_output, curvK_output, sx_output, sy_output, sz_output, dtpsi_output, fourier_output, growth_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_stb/stb-nw16-Q3d0-phi0d1-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
+
+
+  const int stepL1 = 1;
+  const int stepSave = 1;
+  const int loopLim = 20;
+
+/* Perturbation */
+
+  double Qi  = 3.0; // Perturbation wavelength
+  double phi = 0.1;
 
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
@@ -163,27 +174,30 @@ int main(int argc, char* argv[]) {
 
 /* Phase Field parameters */
 
-  const double gamma =  1.0; //1.0;
-  const double beta  =  2.0; //2.0;
+  const double gamma =  3.0; //1.0;
+  const double beta  =  0.4; //2.0;
   const double alpha =  1.0;
   double ep_arg    = atof(argv[2]); 
-  const double ep = -0.01*ep_arg; 
+  const double ep = -0.001*ep_arg; //-0.01
   const double q0    =  1.0;
   const double q02   = q0*q0;
 
 /* Balance of Linear Momentum parameters */
 
   double nu = atof(argv[1]);
-  double Amp = 1.328; //1.328; 
-  double rho_0 = 0.1; // 0.01
+  double Amp = 0.3464101615; //1.328; 
+  double rho_0 = 0.1; // 0.05
   double kp = 0.5; // 0.5 for nw= 8
   double rho_m = (kp*Amp+rho_0)/2;
+  rho_m = 0.5;
 	
 /* Points per wavelength, time step */
 	
-  const int    Nw = 8;
+  const int    Nw = 16;
   const double dt = 0.0005; // 0.0005 (nw 16)	
   const double dtd2  = dt/2;
+
+
 
 /* System size and scaling for FFT */
 
@@ -337,11 +351,17 @@ int main(int argc, char* argv[]) {
 /* Local data containers (surface info) */
 
   std::vector<double> psiSlice_local(alloc_slice);
+  std::vector<double> psiSlice2_local(alloc_slice);
 		
 /* Global data containers (surface info)*/
 
   std::vector<double> psiSlice(size*alloc_slice);
+  std::vector<double> psiSlice2(size*alloc_slice);
   	
+
+  // stb
+  std::vector<double> sh_local(alloc_local);
+  std::vector<double> dtpsi_local(alloc_local);
 
 /********************************************
  *                                          *
@@ -503,26 +523,27 @@ int main(int argc, char* argv[]) {
 
     std::fill(psi_local.begin(),psi_local.end(),0);  
 
-    double Qi  = 0.125/2; // Perturbation wavelength (was over 2)
-    double Ap = Nw;
-
     for ( i_local = 0; i_local < local_n0; i_local++ ) {
     for ( j = 0; j < Ny; j++ ) {
     for ( k = 0; k < Nz; k++ ) 
     {	
 
-      if ( (k > Nx/4) && ( k < 3*Nx/4))
-      {
+      //      if ( (k > (int)round(Nx/5) ) && ( k < (int)round(4*Nx/5)) )
+      //{
 	i = i_local + local_0_start;
 
-	k2 = k + (int)round(Ap*sin(Qi*i*dx));
+	//k2 = k + (int)round(Ap*sin(Qi*i*dx));
 
-	index = (i_local*Ny + j) * Nz + k2;
+	index = (i_local*Ny + j) * Nz + k;
 
-	psi_local[index] = Amp*cos(q0*k*dz);
+	//	psi_local[index] = Amp*cos(q0*k*dz + phi*sin(Qi*i*dx));
+	
+	psi_local[index] = Amp*cos(q0*k*dx)+(Amp*phi/2)*cos(q0*k*dx+Qi*i*dx)
+	  -(Amp*phi/2)*cos(q0*k*dx-Qi*i*dx);
+
 	// + Amp*0.5*sin(q0*k*dz)*(cos(Qi*i*dx)+cos(Qi*j*dy)); 
 	// + Amp*0.5*(cos(Qi*i*dx)+cos(Qi*j*dy));
-      }
+      //}
     }}}
 
     // for ( i_local = 0; i_local < local_n0; i_local++ ) 
@@ -578,16 +599,49 @@ int main(int argc, char* argv[]) {
 
     /** Create Psi output **/
 
-    strPsi += std::to_string(rank);
-    strPsi += ".dat";
-    strPsi = strBox + strPsi;
+    // strPsi += std::to_string(rank);
+    // strPsi += ".dat";
+    // strPsi = strBox + strPsi;
 	
-    std::ofstream psi_output(strPsi.c_str());
-    assert(psi_output.is_open());
-    psi_output.close();
+    // std::ofstream psi_output(strPsi.c_str());
+    // assert(psi_output.is_open());
+    // psi_output.close();
 		
     if (rank == 0 )
     {	
+
+      /** Create info output **/
+
+      std::ofstream info_output(strBox+"info");
+      assert(info_output.is_open());
+
+      info_output << "Nx: " << Nx << "\n";
+      info_output << "Ny: " << Ny << "\n";
+      info_output << "Nz: " << Nz << "\n";
+      info_output << "Points per wavelength (nw): " << Nw << "\n";
+      info_output << "q0 (z direction): " << q0 << "\n";
+      info_output << "epsilon: " << ep << "\n";
+      info_output << "beta: " << beta << "\n";
+      info_output << "gamma: " << gamma << "\n";
+      info_output << "Viscosity (nu): " << nu << "\n";
+      info_output << "dx: " << dx << "\n";
+      info_output << "dt: " << dt << "\n";
+      info_output << "stepL1: " << stepL1 << "\n";
+      info_output << "stepSave: " << stepSave << "\n";
+      info_output << "Initial amp: " << Amp << "\n";
+      info_output << "kp: " << kp << "\n";
+      info_output << "rho_0: " << rho_0 << "\n";
+      info_output << "\n Perturbation info: \n" << "Q (x direction): " << Qi << "\n";
+      info_output << "Perturbation amp (phi): " << phi << "\n";
+
+      info_output.close();
+
+      /** Create growth rate output **/
+
+      std::ofstream growth_output(strBox+"growth.dat");
+      assert(growth_output.is_open());
+      growth_output.close();
+
 		
       /** Create L1 output **/
 
@@ -619,15 +673,15 @@ int main(int argc, char* argv[]) {
       sy_output.close();
       sz_output.close();
 
-      /** Crete divv and rho outputs **/
+      /** Crete dtpsi and rho outputs **/
 
-      std::ofstream divv_output(strBox+"divv.dat");
-      assert(divv_output.is_open());
-      divv_output.close();
+      std::ofstream dtpsi_output(strBox+"dtpsi.dat");
+      assert(dtpsi_output.is_open());
+      dtpsi_output.close();
 
-      std::ofstream rho_output(strBox+"rho.dat");
-      assert(rho_output.is_open());
-      rho_output.close();
+      std::ofstream fourier_output(strBox+"fourier.dat");
+      assert(fourier_output.is_open());
+      fourier_output.close();
 		
     }
 
@@ -708,6 +762,31 @@ int main(int argc, char* argv[]) {
     if ( rank == 0 )
     {
 
+      /** Create info output **/
+
+      std::ofstream info_output(strBox+"info.dat");
+      assert(info_output.is_open());
+
+      info_output << "Nx: " << Nx << "\n";
+      info_output << "Ny: " << Ny << "\n";
+      info_output << "Nz: " << Nz << "\n";
+      info_output << "Points per wavelength (nw): " << Nw << "\n";
+      info_output << "q0 (z direction): " << q0 << "\n";
+      info_output << "epsilon: " << ep << "\n";
+      info_output << "beta: " << beta << "\n";
+      info_output << "gamma: " << gamma << "\n";
+      info_output << "Viscosity (nu): " << nu << "\n";
+      info_output << "dx: " << dx << "\n";
+      info_output << "dt: " << dt << "\n";
+      info_output << "Initial amp: " << Amp << "\n";
+      info_output << "kp: " << kp << "\n";
+      info_output << "rho_0: " << rho_0 << "\n";
+      info_output << "\n Perturbation info: \n" << "Q (x direction): " << Qi << "\n";
+      info_output << "Perturbation amp (phi): " << phi << "\n";
+
+      info_output.close();
+
+
       /** Create L1 output **/
 
       std::ofstream L1_output(strBox+"L1.dat");
@@ -765,8 +844,12 @@ int main(int argc, char* argv[]) {
       mq2c[index] = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
       opSH = alpha*pow(q02-mq2c[index],2);
       aLin[index] = ep - opSH;
-      C1[index] = (2.0-dt*rho_m*aLin[index]);
-      C2[index] = (1.5-dt*rho_m*aLin[index]);
+      // C1[index] = (2.0-dt*rho_m*aLin[index]);
+      // C2[index] = (1.5-dt*rho_m*aLin[index]);
+
+      C1[index] = (1.0+dtd2*aLin[index]);
+      C2[index] = (1.0-dtd2*aLin[index]);
+
 	   
       mq2 = pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);		
       CM1x[index] = scale/(nu*mq2);
@@ -892,7 +975,7 @@ int main(int argc, char* argv[]) {
   *******************************************/
 
   //for(int tst=0;tst < 10;tst++) 
-  while (L1 > limL1)
+  while (nLoop < loopLim)
   {
 
     countL1++;
@@ -927,6 +1010,8 @@ int main(int argc, char* argv[]) {
 
       lapRhoDfDlapPsi_local[index] = 
 	-mq2c[index]*dfDlapPsi_local[index];
+
+      sh_local[index] = -aLin[index]*psiq_local[index];
     }}}	
 
     /** Move psi and derivatives back to real space **/
@@ -942,6 +1027,10 @@ int main(int argc, char* argv[]) {
     trans_local = lapRhoDfDlapPsi_local;
     fftw_execute(iPlanCT);
     lapRhoDfDlapPsi_local = trans_local;
+
+    trans_local = sh_local;
+    fftw_execute(iPlanCT);
+    sh_local = trans_local;
 
     /** COMPUTE: gradients of psi and rho **/
     // partial_x psi (parallelized direction)
@@ -1127,57 +1216,62 @@ int main(int argc, char* argv[]) {
     {
       index =  (i_local*Ny + j)*Nz + k;
 	   
-      rho_local[index] = 
-	kp*sqrt(q02*pow(psi_local[index],2)
-	    +pow(psiGradx_local[index],2)
-	    +pow(psiGrady_local[index],2)
-	    +pow(psiGradz_local[index],2))+rho_0;	     	       
+      // rho_local[index] = 
+      // 	kp*sqrt(q02*pow(psi_local[index],2)
+      // 	    +pow(psiGradx_local[index],2)
+      // 	    +pow(psiGrady_local[index],2)
+      // 	    +pow(psiGradz_local[index],2))+rho_0;	     	       
+
+
+      // only have smectic
+      rho_local[index] = 1;
+
     }}}
 
-    trans_local = rho_local;
-    fftw_execute(planCT);
-    rhoq_local = trans_local;
+    // trans_local = rho_local;
+    // fftw_execute(planCT);
+    // rhoq_local = trans_local;
 
-    for ( i_local = 0; i_local < local_n0; i_local++ ){
-    for ( j = 0; j < Ny; j++ ) {
-    for ( k = 0; k < Nz; k++ ) 
-    {
-      index =  (i_local*Ny + j)*Nz + k;
+    // for ( i_local = 0; i_local < local_n0; i_local++ ){
+    // for ( j = 0; j < Ny; j++ ) {
+    // for ( k = 0; k < Nz; k++ ) 
+    // {
+    //   index =  (i_local*Ny + j)*Nz + k;
 	   
-      rhoq_local[index] = scale*rhoq_local[index]
-	*exp(-1.57*1.57*mq2c[index]/2);	     	       
-    }}}
+    //   rhoq_local[index] = scale*rhoq_local[index]
+    // 	*exp(-1.57*1.57*mq2c[index]/2);	     	       
+    // }}}
 
     // Move smooth rho to real space
 
-    trans_local = rhoq_local;
-    fftw_execute(iPlanCT);
-    rho_local = trans_local;
+    // trans_local = rhoq_local;
+    // fftw_execute(iPlanCT);
+    // rho_local = trans_local;
 
 
     /* Compute divv */
 
-    if (nLoop > 50){
-      for ( i_local = 0; i_local < local_n0; i_local++ ){
-      for ( j = 0; j < Ny; j++ ) {
-      for ( k = 0; k < Nz; k++ ) 
-      {
-	index =  (i_local*Ny + j)*Nz + k;
+    // if (nLoop > 50){
+    //   for ( i_local = 0; i_local < local_n0; i_local++ ){
+    //   for ( j = 0; j < Ny; j++ ) {
+    //   for ( k = 0; k < Nz; k++ ) 
+    //   {
+    // 	index =  (i_local*Ny + j)*Nz + k;
 
-	divv_local[index] =
-	  -((rho_local[index]-rho_old_local[index])/dt
-	    + velx_local[index]*rhoDx_local[index]
-	    + vely_local[index]*rhoDy_local[index]
-	    + velz_local[index]*rhoDz_local[index]) 
-	  /(0.5*(rho_local[index]+rho_old_local[index]));
-      }}}
-    }
+    // 	divv_local[index] =
+    // 	  -((rho_local[index]-rho_old_local[index])/dt
+    // 	    + velx_local[index]*rhoDx_local[index]
+    // 	    + vely_local[index]*rhoDy_local[index]
+    // 	    + velz_local[index]*rhoDz_local[index]) 
+    // 	  /(0.5*(rho_local[index]+rho_old_local[index]));
+    //   }}}
+    // }
 
-    rho_old_local = rho_local;
+    // rho_old_local = rho_local;
 
-    trans_local = divv_local;
-    fftw_execute(planCT);
-    divv_local = trans_local;
+    // trans_local = divv_local;
+    // fftw_execute(planCT);
+    // divv_local = trans_local;
 
 	   
     /** Compute div T^r  and move it to Fourier Space **/
@@ -1189,19 +1283,21 @@ int main(int argc, char* argv[]) {
 
       index =  (i_local*Ny + j)*Nz + k;
 
-      lapRhoDfDlapPsi_local[index] = rho_local[index]*lapRhoDfDlapPsi_local[index];
+      //lapRhoDfDlapPsi_local[index] = rho_local[index]*lapRhoDfDlapPsi_local[index];
 
-      Sx_local[index] =
-	lapRhoDfDlapPsi_local[index]*psiGradx_local[index]
-	-rho_local[index]*dfDlapPsi_local[index]*psiLapDx_local[index];
+      mu = sh_local[index]-beta*pow(psi_local[index],3)+gamma*pow(psi_local[index],5);
 
-      Sy_local[index] =
-	lapRhoDfDlapPsi_local[index]*psiGrady_local[index]
-	-rho_local[index]*dfDlapPsi_local[index]*psiLapDy_local[index];
+      Sx_local[index] = rho_local[index]*mu*psiGradx_local[index];
+	// lapRhoDfDlapPsi_local[index]*psiGradx_local[index]
+	// -rho_local[index]*dfDlapPsi_local[index]*psiLapDx_local[index];
 
-      Sz_local[index] =
-	lapRhoDfDlapPsi_local[index]*psiGradz_local[index]
-	-rho_local[index]*dfDlapPsi_local[index]*psiLapDz_local[index];
+      Sy_local[index] = rho_local[index]*mu*psiGrady_local[index];
+	// lapRhoDfDlapPsi_local[index]*psiGrady_local[index]
+	// -rho_local[index]*dfDlapPsi_local[index]*psiLapDy_local[index];
+
+      Sz_local[index] = rho_local[index]*mu*psiGradz_local[index];
+	// lapRhoDfDlapPsi_local[index]*psiGradz_local[index]
+	// -rho_local[index]*dfDlapPsi_local[index]*psiLapDz_local[index];
     }}}
 
     trans_local = Sx_local;
@@ -1798,17 +1894,27 @@ int main(int argc, char* argv[]) {
       {
 	index =  (i_local*Ny + j)*Nz + k;
 
-	Nl_local[index] = rho_local[index]*
-	  (ep*psi_local[index]-dfDlapPsi_local[index] 
-	   + beta*pow(psi_local[index],3) - gamma*pow(psi_local[index],5))
-	  - lapRhoDfDlapPsi_local[index]
-	  - velx_local[index]*psiGradx_local[index]
-	  - vely_local[index]*psiGrady_local[index]
-	  - velz_local[index]*psiGradz_local[index];
+	mu = sh_local[index]-beta*pow(psi_local[index],3)
+	  +gamma*pow(psi_local[index],5);
 
-	if (nLoop > 53){
+	dtpsi_local[index] = -rho_local[index]*mu;
+	  // - velx_local[index]*psiGradx_local[index]
+	  // - vely_local[index]*psiGrady_local[index]
+	  //- velz_local[index]*psiGradz_local[index];
+
+	//Nl_local[index] = rho_local[index]* (-mu);
+	  // (ep*psi_local[index]-dfDlapPsi_local[index] 
+	//+ beta*pow(psi_local[index],3) - gamma*pow(psi_local[index],5));
+	  // - lapRhoDfDlapPsi_local[index]	  
+	//- velx_local[index]*psiGradx_local[index]
+	//  - vely_local[index]*psiGrady_local[index]
+	//  - velz_local[index]*psiGradz_local[index];
+
+	Nl_local[index] = beta*pow(psi_local[index],3)-gamma*pow(psi_local[index],5);
+
+	if (nLoop > 353){
 	Nl_local[index] +=
-	  p_local[index]*dRho_local[index]/(2*pow(rho_local[index],2));	  
+	  0; // p_local[index]*dRho_local[index]/(2*pow(rho_local[index],2));	  
 	   // (kp*(pow(psi_local[index],2)+(1/3)
 	   //      *(pow(psiGradx_local[index],2)
 	   //      +pow(psiGrady_local[index],2)
@@ -1838,10 +1944,13 @@ int main(int argc, char* argv[]) {
     {
       index =  (i_local*Ny + j)*Nz + k;
 
-      psiq_local[index] = 
-	(C1[index]*psiq_local[index] - 0.5*psiq_old_local[index]
-	 + dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
+      // psiq_local[index] = 
+      // 	(C1[index]*psiq_local[index] - 0.5*psiq_old_local[index]
+      // 	 + dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
 
+      psiq_local[index] = 
+      	(C1[index]*psiq_local[index]
+      	 + dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
     }}}	
 		 
     psiq_old_local = trans_local;
@@ -1856,7 +1965,7 @@ int main(int argc, char* argv[]) {
 		 
     /* COMPUTE: L1 (under count condition) */
 		 
-    if ( countL1 == 100 ) //50
+    if ( countL1 == stepL1 ) //50
     {
 
       sumA_local = 0.0; sumB_local = 0.0;
@@ -1898,6 +2007,7 @@ int main(int argc, char* argv[]) {
 	assert(mass_output.is_open());
 	mass_output << rho_sum << "\n";
 	mass_output.close();	
+
       }
 
       MPI::COMM_WORLD.Bcast(&L1,1,MPI::DOUBLE,0);
@@ -1908,7 +2018,7 @@ int main(int argc, char* argv[]) {
 
       /* SAVE PSI & OBTAIN SURFACE INFO (under count condition) */
 
-      if ( countSave == 10 ) // 4
+      if ( countSave == stepSave ) // 4
       { 
 			 			 	
 	j = Ny/2;
@@ -1922,18 +2032,18 @@ int main(int argc, char* argv[]) {
 	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
 			       psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
 
-	std::ofstream psi_output(strPsi.c_str());
-	assert(psi_output.is_open());
+	// std::ofstream psi_output(strPsi.c_str());
+	// assert(psi_output.is_open());
 
-	for ( i_local = 0; i_local < local_n0; i_local++ ){
-	for ( j = 0; j < Ny; j++ ) {
-	for ( k = 0; k < Nz; k++ ) 
-	{
-	  index  = (i_local*Ny +j)*Nz + k;
-	  psi_output << psi_local[index] << "\n";
-	}}}
+	// for ( i_local = 0; i_local < local_n0; i_local++ ){
+	// for ( j = 0; j < Ny; j++ ) {
+	// for ( k = 0; k < Nz; k++ ) 
+	// {
+	//   index  = (i_local*Ny +j)*Nz + k;
+	//   psi_output << psi_local[index] << "\n";
+	// }}}
 
-	psi_output.close();
+	// psi_output.close();
 
 	/** rank 0 outputs **/
 
@@ -1948,7 +2058,8 @@ int main(int argc, char* argv[]) {
 	  {
 	    index = i*Nz + k;
 
-	    psiMid_output << psiSlice[index] << "\n";
+	    psiMid_output << std::fixed << std::setprecision(8) << 
+	      psiSlice[index] << "\n";
 	  }}
 
 	  psiMid_output.close();	
@@ -2056,14 +2167,14 @@ int main(int argc, char* argv[]) {
 	  sz_output.close();
 	}
 
-	// Save pressure p for mid cross section
+	// Save pressure dtpsi for mid cross section
 
 	j = Ny/2;
 	for( k = 0; k < Nz ; k++ ){
 	for( i_local = 0; i_local < local_n0 ; i_local++ ){
 	  index  = (i_local*Ny +j)*Nz + k;
 	  index2 = i_local*Nz + k;
-	  psiSlice_local[index2] = divv_local[index];
+	  psiSlice_local[index2] = dtpsi_local[index];
 	}}
 
 	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
@@ -2071,49 +2182,70 @@ int main(int argc, char* argv[]) {
 
 	if (rank == 0 )
 	{
-	  divv_output.open(strBox+"divv.dat",std::ios_base::app);
+	  dtpsi_output.open(strBox+"dtpsi.dat",std::ios_base::app);
 									
-	  assert(divv_output.is_open());
+	  assert(dtpsi_output.is_open());
 
 	  for ( i = 0; i < Nx; i++ ) {
 	  for ( k = 0; k < Nz; k++ ) {
 			
 	    index = i*Nz + k;
 			
-	    divv_output << psiSlice[index] << "\n";
+	    dtpsi_output << psiSlice[index] << "\n";
 	  }}
 
-	  divv_output.close();
+	  dtpsi_output.close();
 	}
 
 	// Save density rho for mid cross section
 
-	j = Ny/2;
+	j = 0;
 	for( k = 0; k < Nz ; k++ ){
 	for( i_local = 0; i_local < local_n0 ; i_local++ ){
 	  index  = (i_local*Ny +j)*Nz + k;
 	  index2 = i_local*Nz + k;
-	  psiSlice_local[index2] = rho_local[index];
+	  psiSlice_local[index2] = psiq_local[index];
+	  psiSlice2_local[index2] = psiq_old_local[index];
 	}}
 
 	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
 			       psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
 
+	MPI::COMM_WORLD.Gather(psiSlice2_local.data(),alloc_slice,MPI::DOUBLE,
+			       psiSlice2.data(),alloc_slice, MPI::DOUBLE,0);
+
+
 	if (rank == 0 )
 	{
-	  rho_output.open(strBox+"rho.dat",std::ios_base::app);
+	  fourier_output.open(strBox+"fourier.dat",std::ios_base::app);
 									
-	  assert(rho_output.is_open());
+	  assert(fourier_output.is_open());
 
 	  for ( i = 0; i < Nx; i++ ) {
-	  for ( k = 0; k < Nz; k++ ) {
+	  for ( k = 0; k < Nz; k++ ) {				   
 			
 	    index = i*Nz + k;
-			
-	    rho_output << psiSlice[index] << "\n";
+
+	    fourier_output << std::fixed << std::setprecision(16) 
+			   << psiSlice[index] << "\n";
 	  }}
 
-	  rho_output.close();
+	  fourier_output.close();
+
+
+	  if (nLoop > 1){
+	   
+	    i = (int)round(Qi/Vqz[1]);
+	    k = (int)round(q0/Vqz[1]);
+	    
+	    index = i*Nz + k;
+
+	    growth_output.open(strBox+"growth.dat",std::ios_base::app);
+	    assert(growth_output.is_open());
+	    growth_output << (psiSlice[index]-psiSlice2[index])
+	      /(dt*psiSlice2[index]) << "\n";
+	    growth_output.close();
+	  }	
 	}
 
 

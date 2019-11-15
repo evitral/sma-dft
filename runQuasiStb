@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH -J lsaq0d9e0d1
-#SBATCH -o lsaq0d9e0d1.%j.out
+#SBATCH -J stbQ2d0phi0d1
+#SBATCH -o stbQ2d0phi0d1.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
 #SBATCH --mem=80G
 #SBATCH --export=ALL
-#SBATCH -t 01:00:00
+#SBATCH -t 00:10:00
 #SBATCH -A umn120
 
 echo "-------------------------------------------------------------------------"
@@ -20,12 +20,12 @@ module load gnutools
 module load intel/2016.3.210 mvapich2_ib
 module load fftw
 #module list
-#cd /home/evitral/sma-dft/no-adv/
+#cd /home/evitral/sma-dft/quasi/
 
 echo " "
 echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -I $BUILD/include -O3 -o adv/quasi-lsa adv/quasi-lsa.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./adv/quasi-lsa 10 80 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_lsa/result.out
+mpicxx -I $BUILD/include -O3 -o quasi/quasi-stb quasi/quasi-stb.cpp -L $BUILD/lib $LIBS
+ibrun -np 16 ./quasi/quasi-stb 10 9 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_stb/result-stb.out
