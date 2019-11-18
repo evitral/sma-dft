@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -J stbQ2d0phi0d1
-#SBATCH -o stbQ2d0phi0d1.%j.out
+#SBATCH -J stb2Q0d5phi0d1nu0d1
+#SBATCH -o stb2Q0d5phi0d1nu0d1.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
-#SBATCH --mem=80G
+#SBATCH --mem=120G
 #SBATCH --export=ALL
 #SBATCH -t 00:10:00
 #SBATCH -A umn120
@@ -28,4 +28,4 @@ echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
 mpicxx -I $BUILD/include -O3 -o quasi/quasi-stb quasi/quasi-stb.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./quasi/quasi-stb 10 9 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_stb/result-stb.out
+ibrun -np 16 ./quasi/quasi-stb 1 9 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/result-stb.out

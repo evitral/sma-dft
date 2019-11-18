@@ -9,8 +9,7 @@
  *     gradients of the density.            *
  *                                          *
  *     (cos): DCT (and also DST!)           *
- *     (Adv): Advection is on               *
- *     (Curv): Save curvatures              *
+ *     (Adv): Advection is on, hydro = 1    *
  *     quasi: Quasi-incompressible eqns,    *
  *            varying density field         *        
  *     stb: Stability (long and transv)     *
@@ -130,15 +129,18 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_stb/stb-nw16-Q3d0-phi0d1-nu";
+  std::string strLoad = 
+    "/oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/stb-nw8-Q0d5-phi0d1-nu0d";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
 
   std::ofstream psiMid_output, surf_output, velS_output, info_output,
-    curvH_output, curvK_output, sx_output, sy_output, sz_output, dtpsi_output, fourier_output, growth_output;
+    curvH_output, curvK_output, sx_output, sy_output, sz_output, dtpsi_output, 
+    fourier_output, growth_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_stb/stb-nw16-Q3d0-phi0d1-nu";
+  std::string strBox = 
+    "/oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/stb-nw8-Q0d5-phi0d1-nu0d";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -146,11 +148,13 @@ int main(int argc, char* argv[]) {
 
   const int stepL1 = 1;
   const int stepSave = 1;
-  const int loopLim = 20;
+  const int loopLim = 10;
 
 /* Perturbation */
 
-  double Qi  = 3.0; // Perturbation wavelength
+  double hydro = 1; // 1: adv on
+
+  double Qi  = 0.5; // Perturbation wavelength
   double phi = 0.1;
 
 	
@@ -184,8 +188,11 @@ int main(int argc, char* argv[]) {
 
 /* Balance of Linear Momentum parameters */
 
-  double nu = atof(argv[1]);
+  double nu = 0.1*atof(argv[1]);
   double Amp = 0.3464101615; //1.328; 
+
+  // These dont matter for a pure smectic
+
   double rho_0 = 0.1; // 0.05
   double kp = 0.5; // 0.5 for nw= 8
   double rho_m = (kp*Amp+rho_0)/2;
@@ -193,11 +200,9 @@ int main(int argc, char* argv[]) {
 	
 /* Points per wavelength, time step */
 	
-  const int    Nw = 16;
+  const int    Nw = 8;
   const double dt = 0.0005; // 0.0005 (nw 16)	
   const double dtd2  = dt/2;
-
-
 
 /* System size and scaling for FFT */
 
@@ -663,15 +668,15 @@ int main(int argc, char* argv[]) {
 
       /** Crete velocity outputs **/
 
-      std::ofstream sx_output(strBox+"vx.dat");
-      std::ofstream sy_output(strBox+"vy.dat");
-      std::ofstream sz_output(strBox+"vz.dat");
-      assert(sx_output.is_open());
-      assert(sy_output.is_open());
-      assert(sz_output.is_open());
-      sx_output.close();
-      sy_output.close();
-      sz_output.close();
+      // std::ofstream sx_output(strBox+"vx.dat");
+      // std::ofstream sy_output(strBox+"vy.dat");
+      // std::ofstream sz_output(strBox+"vz.dat");
+      // assert(sx_output.is_open());
+      // assert(sy_output.is_open());
+      // assert(sz_output.is_open());
+      // sx_output.close();
+      // sy_output.close();
+      // sz_output.close();
 
       /** Crete dtpsi and rho outputs **/
 
@@ -1282,6 +1287,8 @@ int main(int argc, char* argv[]) {
     {
 
       index =  (i_local*Ny + j)*Nz + k;
+
+      // Pure smectic, force in the BLM becomes mu grad psi
 
       //lapRhoDfDlapPsi_local[index] = rho_local[index]*lapRhoDfDlapPsi_local[index];
 
@@ -1897,30 +1904,25 @@ int main(int argc, char* argv[]) {
 	mu = sh_local[index]-beta*pow(psi_local[index],3)
 	  +gamma*pow(psi_local[index],5);
 
-	dtpsi_local[index] = -rho_local[index]*mu;
-	  // - velx_local[index]*psiGradx_local[index]
-	  // - vely_local[index]*psiGrady_local[index]
-	  //- velz_local[index]*psiGradz_local[index];
+	if ( hydro == 1 ) 
+	{
+	  dtpsi_local[index] = -rho_local[index]*mu
+	    - velx_local[index]*psiGradx_local[index]
+	    - vely_local[index]*psiGrady_local[index]
+	    - velz_local[index]*psiGradz_local[index];
 
-	//Nl_local[index] = rho_local[index]* (-mu);
-	  // (ep*psi_local[index]-dfDlapPsi_local[index] 
-	//+ beta*pow(psi_local[index],3) - gamma*pow(psi_local[index],5));
-	  // - lapRhoDfDlapPsi_local[index]	  
-	//- velx_local[index]*psiGradx_local[index]
-	//  - vely_local[index]*psiGrady_local[index]
-	//  - velz_local[index]*psiGradz_local[index];
+	  Nl_local[index] = beta*pow(psi_local[index],3)
+	    -gamma*pow(psi_local[index],5)
+	    - velx_local[index]*psiGradx_local[index]
+	    - vely_local[index]*psiGrady_local[index]
+	    - velz_local[index]*psiGradz_local[index];
+	} else {
+	  dtpsi_local[index] = -rho_local[index]*mu;
 
-	Nl_local[index] = beta*pow(psi_local[index],3)-gamma*pow(psi_local[index],5);
-
-	if (nLoop > 353){
-	Nl_local[index] +=
-	  0; // p_local[index]*dRho_local[index]/(2*pow(rho_local[index],2));	  
-	   // (kp*(pow(psi_local[index],2)+(1/3)
-	   //      *(pow(psiGradx_local[index],2)
-	   //      +pow(psiGrady_local[index],2)
-	   //      +pow(psiGradz_local[index],2)
-	   // 	 ))+rho_0); 
+	  Nl_local[index] = beta*pow(psi_local[index],3)
+	    -gamma*pow(psi_local[index],5);
 	}
+
       }}}
 
     /* Obtain current Nq_local */
@@ -1944,6 +1946,8 @@ int main(int argc, char* argv[]) {
     {
       index =  (i_local*Ny + j)*Nz + k;
 
+      // Both methods give the same results for a pure smectic
+
       // psiq_local[index] = 
       // 	(C1[index]*psiq_local[index] - 0.5*psiq_old_local[index]
       // 	 + dtd2*scale*(3.0*Nl_local[index]-Nl_old_local[index]))/C2[index];
@@ -1965,7 +1969,7 @@ int main(int argc, char* argv[]) {
 		 
     /* COMPUTE: L1 (under count condition) */
 		 
-    if ( countL1 == stepL1 ) //50
+    if ( countL1 == stepL1 )
     {
 
       sumA_local = 0.0; sumB_local = 0.0;
@@ -2073,99 +2077,6 @@ int main(int argc, char* argv[]) {
 		    << " local date and time is: " << dNow << std::endl;
 					
 	} // ends rank 0 psiMid output
-
-	// Save vel_x for mid cross section
-
-	j = Ny/2;
-	for( k = 0; k < Nz ; k++ ){
-	for( i_local = 0; i_local < local_n0 ; i_local++ ){
-	  index  = (i_local*Ny +j)*Nz + k;
-	  index2 = i_local*Nz + k;
-	  psiSlice_local[index2] = velx_local[index];
-	}}
-
-	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
-			       psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
-
-	if (rank == 0 )
-	{
-	  sx_output.open(strBox+"vx.dat",std::ios_base::app);
-									
-	  assert(sx_output.is_open());
-		    
-	  for ( i = 0; i < Nx; i++ ) {
-	  for ( k = 0; k < Nz; k++ ) {
-	    
-	    index = i*Nz + k;
-			
-	    sx_output << psiSlice[index] << "\n";
-	  }}
-
-	  sx_output.close();
-
-	}
-
-	// Save vel_y for mid cross section
-
-	j = Ny/2;
-	for( k = 0; k < Nz ; k++ ){
-	for( i_local = 0; i_local < local_n0 ; i_local++ ){
-	  index  = (i_local*Ny +j)*Nz + k;
-	  index2 = i_local*Nz + k;
-	  psiSlice_local[index2] = vely_local[index];
-	}}
-
-	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
-			       psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
-
-	if (rank == 0 )
-	{
-	  sy_output.open(strBox+"vy.dat",std::ios_base::app);
-									
-	  assert(sy_output.is_open());
-
-	  for ( i = 0; i < Nx; i++ ) {
-	  for ( k = 0; k < Nz; k++ ) {
-			
-	    index = i*Nz + k;
-			
-	    sy_output << psiSlice[index] << "\n";
-	  }}
-
-	  sy_output.close();
-
-	}
-
-	// Save vel_z for mid cross section
-
-	j = Ny/2;
-	for( k = 0; k < Nz ; k++ ){
-	for( i_local = 0; i_local < local_n0 ; i_local++ ){
-	  index  = (i_local*Ny +j)*Nz + k;
-	  index2 = i_local*Nz + k;
-	  psiSlice_local[index2] = velz_local[index];
-	}}
-
-	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
-			       psiSlice.data(),alloc_slice, MPI::DOUBLE,0);
-
-	if (rank == 0 )
-	{
-	  sz_output.open(strBox+"vz.dat",std::ios_base::app);
-									
-	  assert(sz_output.is_open());
-
-
-	  for ( i = 0; i < Nx; i++ ) {
-	  for ( k = 0; k < Nz; k++ ) {
-			
-	    index = i*Nz + k;
-	    
-	    sz_output << psiSlice[index] << "\n";
-	  }}
-
-	  sz_output.close();
-	}
 
 	// Save pressure dtpsi for mid cross section
 
