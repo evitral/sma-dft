@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -J qn10e0d69nw8
-#SBATCH -o qn10e0d69nw8.%j.out
+#SBATCH -J qe0d675nw8dt0005fc
+#SBATCH -o qe0d675nw8dt0005fc.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
@@ -16,16 +16,15 @@ echo "Environment for building and running applications with Intel compiler and 
 #module purge
 
 #Load modules for Intel & MPI
-module load gnutools
-module load intel/2016.3.210 mvapich2_ib
-module load fftw
+module load intel
+module load mvapich2_ib fftw
 #module list
 #cd /home/evitral/sma-dft/quasi/
 
 echo " "
 echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
-export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
+export BUILD=/opt/fftw/3.3.8/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
 mpicxx -I $BUILD/include -O3 -o quasi/quasi quasi/quasi.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./quasi/quasi 10 69 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/resultNw8-69.out
+ibrun -np 16 ./quasi/quasi 10 675 220 0 > /oasis/scratch/comet/evitral/temp_project/quasi_fc/resultNw8-675.out

@@ -130,7 +130,7 @@ int main(int argc, char* argv[]) {
   std::string strPsi = "psi";
 	
   std::string strLoad = 
-    "/oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/stb-nw8-Q0d5-phi0d1-nu0d";
+    "/oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/stb-512-nw8-Q0d5-phi0d1-nu0d";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
     fourier_output, growth_output;
 
   std::string strBox = 
-    "/oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/stb-nw8-Q0d5-phi0d1-nu0d";
+    "/oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/stb-512-nw8-Q0d5-phi0d1-nu0d";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
+  const ptrdiff_t Nx = 512, Ny = 512, Nz = 512;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	

@@ -16,8 +16,7 @@ echo "Environment for building and running applications with Intel compiler and 
 #module purge
 
 #Load modules for Intel & MPI
-module load gnutools
-module load intel/2016.3.210 mvapich2_ib
+module load intel/2018.1.163 mvapich2_ib
 module load fftw
 #module list
 #cd /home/evitral/sma-dft/quasi/
@@ -25,7 +24,7 @@ module load fftw
 echo " "
 echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
-export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
+export BUILD=/opt/fftw/3.3.8/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
 mpicxx -I $BUILD/include -O3 -o quasi/quasi-stb quasi/quasi-stb.cpp -L $BUILD/lib $LIBS
 ibrun -np 16 ./quasi/quasi-stb 1 9 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_stb/adv/result-stb.out

@@ -58,10 +58,10 @@ mpicxx -I /soft/fftw/intel-ompi/3.3-double/include -o code code.cpp
 COMET:
 
 module load gnutools
-module load intel/2016.3.210 mvapich2_ib 
+module load intel/2018.1.163 mvapich2_ib 
 
-mpicxx -I /opt/fftw/3.3.4/intel/mvapich2_ib/include -O2 -o code code.cpp 
--L /opt/fftw/3.3.4/intel/mvapich2_ib/lib -lfftw3_mpi -lfftw3 -lm -std=c++11 
+mpicxx -I /opt/fftw/3.3.8/intel/mvapich2_ib/include -O2 -o code code.cpp 
+-L /opt/fftw/3.3.8/intel/mvapich2_ib/lib -lfftw3_mpi -lfftw3 -lm -std=c++11 
 
 ********************************************/
 
@@ -117,6 +117,11 @@ int main(int argc, char* argv[]) {
   double rho_sum, rho_sum_local;
   std::ofstream mass_output;
 
+/* energy output */
+
+  double energy, energy_local;
+  std::ofstream energy_output;
+
 /* Ints and doubles for surface info */
 
   int index1, index2, k2;
@@ -129,19 +134,26 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-fc-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
 
   std::ofstream psiMid_output, surf_output, velS_output, 
-    curvH_output, curvK_output, sx_output, sy_output, sz_output, divv_output, rho_output;
+    curvH_output, curvK_output, sx_output, sy_output, sz_output, 
+    divv_output, rho_output, info_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_flat/qsi-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-fc-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
 
+ 
+  /* Save intervals */ 
+
+  const int stepL1 = 50; // 50
+  const int stepSave = 1; // 10
+  const int divvSwitch = 200; // 200
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
@@ -167,22 +179,22 @@ int main(int argc, char* argv[]) {
   const double beta  =  2.0; //2.0;
   const double alpha =  1.0;
   double ep_arg    = atof(argv[2]); 
-  const double ep = -0.01*ep_arg; 
+  const double ep = -0.001*ep_arg;  // -0.01, -0.001 for 675
   const double q0    =  1.0;
   const double q02   = q0*q0;
 
 /* Balance of Linear Momentum parameters */
 
   double nu = atof(argv[1]);
-  double Amp = 1.328; //1.328; 
-  double rho_0 = 0.1; // 0.01
+  double Amp = 1.34164; //1.328; 
+  double rho_0 = 0.05; // 0.05
   double kp = 0.5; // 0.5 for nw= 8
-  double rho_m = (kp*Amp+rho_0)/2;
+  double rho_m = (kp*Amp+rho_0)/2; // was divided by 2
 	
 /* Points per wavelength, time step */
 	
   const int    Nw = 8;
-  const double dt = 0.0005; // 0.0005 (nw 16)	
+  const double dt = 0.001; // 0.0005	
   const double dtd2  = dt/2;
 
 /* System size and scaling for FFT */
@@ -317,6 +329,7 @@ int main(int argc, char* argv[]) {
   std::vector<double> p_local(alloc_local);	
 
   std::vector<double> divv_local(alloc_local);	
+  std::vector<double> temp_local(alloc_local);	
 
   std::vector<double> mq2c(alloc_local);	
   std::vector<double> dRho_local(alloc_local);	
@@ -504,74 +517,72 @@ int main(int argc, char* argv[]) {
     std::fill(psi_local.begin(),psi_local.end(),0);  
 
     double Qi  = 0.125/2; // Perturbation wavelength (was over 2)
-    double Ap = Nw;
+    double phi = Nw;
 
-    for ( i_local = 0; i_local < local_n0; i_local++ ) {
-    for ( j = 0; j < Ny; j++ ) {
-    for ( k = 0; k < Nz; k++ ) 
-    {	
+    // for ( i_local = 0; i_local < local_n0; i_local++ ) {
+    // for ( j = 0; j < Ny; j++ ) {
+    // for ( k = 0; k < Nz; k++ ) 
+    // {	
 
-      if ( (k > Nx/4) && ( k < 3*Nx/4))
-      {
-	i = i_local + local_0_start;
+    //   if ( (k > Nx/4) && ( k < 3*Nx/4))
+    //   {
+    // 	i = i_local + local_0_start;
 
-	k2 = k + (int)round(Ap*sin(Qi*i*dx));
+    // 	k2 = k + (int)round(phi*sin(Qi*i*dx));
 
-	index = (i_local*Ny + j) * Nz + k2;
+    // 	index = (i_local*Ny + j) * Nz + k2;
 
-	psi_local[index] = Amp*cos(q0*k*dz);
-	// + Amp*0.5*sin(q0*k*dz)*(cos(Qi*i*dx)+cos(Qi*j*dy)); 
-	// + Amp*0.5*(cos(Qi*i*dx)+cos(Qi*j*dy));
-      }
-    }}}
+    // 	psi_local[index] = Amp*cos(q0*k*dz);
+    //   }
+    // }}}
 
-    // for ( i_local = 0; i_local < local_n0; i_local++ ) 
-    // {
-    //   i = i_local + local_0_start;
+    for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    {
+      i = i_local + local_0_start;
 
-    //   for ( j = 0; j < Ny; j++ ) {
-    //   for ( k = 0; k < Nz; k++ ) 
-    //   {	
-    //     index = (i_local*Ny + j) * Nz + k;
-    //     if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-    //     {		
-    //       xs = i - mid;
-    //       ys = j - mid;
-    //       // zs = k + mid*3/4; 
-    //       zs = k;
-    //       // zs = k-mid for hyperboloid in the middle
-    //       // zs = k for hyperboloid in the botton
-    //       ds = sqrt(xs*xs+ys*ys);
-    //       if (ds < mid)
-    //       {
-    // 	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-    // 	{
-    // 	  psi_local[index] = 0.0;
-    // 	}
-    // 	else
-    // 	{
-    // 	  psi_local[index] = Amp*cos(q0*dz*
-    // 				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-    // 	}
-    //       }
-    //       else
-    //       {
-    // 	if (abs(zs) < bE)
-    // 	{
-    // 	  psi_local[index] = Amp*cos(q0*zs*dz);
-    // 	}
-    // 	else
-    // 	{
-    // 	  psi_local[index] = 0.0;
-    // 	}
-    //       }		 
-    //     }
-    //     else
-    //       {
-    // 	psi_local[index] = 0.0;
-    //       }
-    //   }}
-    //} // close IC assign
+      for ( j = 0; j < Ny; j++ ) {
+      for ( k = 0; k < Nz; k++ ) 
+      {	
+        index = (i_local*Ny + j) * Nz + k;
+        if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
+        {		
+          xs = i - mid;
+          ys = j - mid;
+          // zs = k + mid*3/4; 
+          zs = k;
+          // zs = k-mid for hyperboloid in the middle
+          // zs = k for hyperboloid in the botton
+          ds = sqrt(xs*xs+ys*ys);
+          if (ds < mid)
+          {
+    	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+    	{
+    	  psi_local[index] = 0.0;
+    	}
+    	else
+    	{
+    	  psi_local[index] = Amp*cos(q0*dz*
+    				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+    	}
+          }
+          else
+          {
+    	if (abs(zs) < bE)
+    	{
+    	  psi_local[index] = Amp*cos(q0*zs*dz);
+    	}
+    	else
+    	{
+    	  psi_local[index] = 0.0;
+    	}
+          }		 
+        }
+        else
+          {
+    	psi_local[index] = 0.0;
+          }
+      }}
+    } // close IC assign
 
 
 /* Output IC to file and create L1 output */
@@ -588,6 +599,34 @@ int main(int argc, char* argv[]) {
 		
     if (rank == 0 )
     {	
+
+      /** Create info output **/
+
+      std::ofstream info_output(strBox+"info");
+      assert(info_output.is_open());
+
+      info_output << "Nx: " << Nx << "\n";
+      info_output << "Ny: " << Ny << "\n";
+      info_output << "Nz: " << Nz << "\n";
+      info_output << "Points per wavelength (nw): " << Nw << "\n";
+      info_output << "q0 (z direction): " << q0 << "\n";
+      info_output << "epsilon: " << ep << "\n";
+      info_output << "beta: " << beta << "\n";
+      info_output << "gamma: " << gamma << "\n";
+      info_output << "Viscosity (nu): " << nu << "\n";
+      info_output << "dx: " << dx << "\n";
+      info_output << "dt: " << dt << "\n";
+      info_output << "stepL1: " << stepL1 << "\n";
+      info_output << "stepSave: " << stepSave << "\n";
+      info_output << "divv switch: " << divvSwitch << "\n";
+      info_output << "Initial amp: " << Amp << "\n";
+      info_output << "kp: " << kp << "\n";
+      info_output << "rho_0: " << rho_0 << "\n";
+      info_output << "Perturbation wavenumber Qx (flat): " << Qi << "\n";
+      info_output << "Perturbation amplitude phi (flat): " << phi << "\n";
+      info_output << "Focal conic initial size (fc): " << aE << "\n";
+
+      info_output.close();
 		
       /** Create L1 output **/
 
@@ -600,6 +639,12 @@ int main(int argc, char* argv[]) {
       std::ofstream mass_output(strBox+"mass.dat");
       assert(mass_output.is_open());
       mass_output.close();
+
+      /** Create energy output **/
+
+      std::ofstream energy_output(strBox+"energy.dat");
+      assert(energy_output.is_open());
+      energy_output.close();
 
       /** Create psiMid output **/
 
@@ -708,11 +753,48 @@ int main(int argc, char* argv[]) {
     if ( rank == 0 )
     {
 
+      /** Create info output **/
+
+      std::ofstream info_output(strBox+"info");
+      assert(info_output.is_open());
+
+      info_output << "Nx: " << Nx << "\n";
+      info_output << "Ny: " << Ny << "\n";
+      info_output << "Nz: " << Nz << "\n";
+      info_output << "Points per wavelength (nw): " << Nw << "\n";
+      info_output << "q0 (z direction): " << q0 << "\n";
+      info_output << "epsilon: " << ep << "\n";
+      info_output << "beta: " << beta << "\n";
+      info_output << "gamma: " << gamma << "\n";
+      info_output << "Viscosity (nu): " << nu << "\n";
+      info_output << "dx: " << dx << "\n";
+      info_output << "dt: " << dt << "\n";
+      info_output << "stepL1: " << stepL1 << "\n";
+      info_output << "stepSave: " << stepSave << "\n";
+      info_output << "Initial amp: " << Amp << "\n";
+      info_output << "kp: " << kp << "\n";
+      info_output << "rho_0: " << rho_0 << "\n";
+
+      info_output.close();
+
       /** Create L1 output **/
 
       std::ofstream L1_output(strBox+"L1.dat");
       assert(L1_output.is_open());
       L1_output.close();
+
+      /** Create mass output **/
+
+      std::ofstream mass_output(strBox+"mass.dat");
+      assert(mass_output.is_open());
+      mass_output.close();
+
+      /** Create energy output **/
+
+      std::ofstream energy_output(strBox+"energy.dat");
+      assert(energy_output.is_open());
+      energy_output.close();
+
 
       /** Create psiMid output **/
 
@@ -768,15 +850,15 @@ int main(int argc, char* argv[]) {
       C1[index] = (2.0-dt*rho_m*aLin[index]);
       C2[index] = (1.5-dt*rho_m*aLin[index]);
 	   
-      mq2 = pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);		
+      mq2 = pow(Vsx[i_local],2)+pow(Vqy[j],2)+pow(Vqz[k],2);
       CM1x[index] = scale/(nu*mq2);
-      CM2x[index] = Vsx[i_local]/mq2; 		 
+      CM2x[index] = Vsx[i_local]/mq2;
 
-      mq2 = pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2);		
+      mq2 = pow(Vqx[i_local],2)+pow(Vsy[j],2)+pow(Vqz[k],2);
       CM1y[index] = scale/(nu*mq2);
-      CM2y[index] = Vsy[j]/mq2;		 
+      CM2y[index] = Vsy[j]/mq2;
 
-      mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2);		
+      mq2 = pow(Vqx[i_local],2)+pow(Vqy[j],2)+pow(Vsz[k],2);
       CM1z[index] = scale/(nu*mq2);
       CM2z[index] = Vsz[k]/mq2;		 
 		 
@@ -921,7 +1003,7 @@ int main(int argc, char* argv[]) {
 
       index =  (i_local*(Ny) + j)*(Nz) + k;
 
-      dRho_local[index] = 2*kp*(q02+mq2c[index])*psiq_local[index];
+      dRho_local[index] = kp*(q02+mq2c[index])*psiq_local[index];
 
       dfDlapPsi_local[index] = alpha*(q02-mq2c[index])*psiq_local[index];
 
@@ -1145,7 +1227,7 @@ int main(int argc, char* argv[]) {
       index =  (i_local*Ny + j)*Nz + k;
 	   
       rhoq_local[index] = scale*rhoq_local[index]
-	*exp(-1.57*1.57*mq2c[index]/2);	     	       
+	*exp(-1.57*1.57*mq2c[index]*8);	   // /2  	       
     }}}
 
     // Move smooth rho to real space
@@ -1157,7 +1239,7 @@ int main(int argc, char* argv[]) {
 
     /* Compute divv */
 
-    if (nLoop > 50){
+    //    if (nLoop > divvSwitch){
       for ( i_local = 0; i_local < local_n0; i_local++ ){
       for ( j = 0; j < Ny; j++ ) {
       for ( k = 0; k < Nz; k++ ) 
@@ -1169,15 +1251,35 @@ int main(int argc, char* argv[]) {
 	    + velx_local[index]*rhoDx_local[index]
 	    + vely_local[index]*rhoDy_local[index]
 	    + velz_local[index]*rhoDz_local[index]) 
-	  /(0.5*(rho_local[index]+rho_old_local[index]));
+	  / (0.5*(rho_local[index]+rho_old_local[index]));
       }}}
+      //    }
+
+    if (nLoop < divvSwitch){
+
+      temp_local = divv_local;
+      std::fill(divv_local.begin(),divv_local.end(),0);      
+
     }
+
 
     rho_old_local = rho_local;
 
     trans_local = divv_local;
     fftw_execute(planCT);
     divv_local = trans_local;
+
+
+    // for ( i_local = 0; i_local < local_n0; i_local++ ){
+    // for ( j = 0; j < Ny; j++ ) {
+    // for ( k = 0; k < Nz; k++ ) 
+    // {
+    //   index =  (i_local*Ny + j)*Nz + k;
+	   
+    //   divv_local[index] = divv_local[index]
+    // 		*exp(-1.57*1.57*mq2c[index]/2);	     	       
+    // }}}
+
 
 	   
     /** Compute div T^r  and move it to Fourier Space **/
@@ -1806,9 +1908,9 @@ int main(int argc, char* argv[]) {
 	  - vely_local[index]*psiGrady_local[index]
 	  - velz_local[index]*psiGradz_local[index];
 
-	if (nLoop > 53){
+	if (nLoop > divvSwitch + 1){
 	Nl_local[index] +=
-	  p_local[index]*dRho_local[index]/(2*pow(rho_local[index],2));	  
+	  p_local[index]*dRho_local[index]/(rho_local[index]*((rho_local[index]-rho_0)/kp));	  
 	   // (kp*(pow(psi_local[index],2)+(1/3)
 	   //      *(pow(psiGradx_local[index],2)
 	   //      +pow(psiGrady_local[index],2)
@@ -1856,7 +1958,7 @@ int main(int argc, char* argv[]) {
 		 
     /* COMPUTE: L1 (under count condition) */
 		 
-    if ( countL1 == 100 ) //50
+    if ( countL1 == stepL1 ) //50
     {
 
       sumA_local = 0.0; sumB_local = 0.0;
@@ -1864,6 +1966,9 @@ int main(int argc, char* argv[]) {
 
       rho_sum_local = 0.0;
       rho_sum = 0.0;
+
+      energy_local = 0.0;
+      energy = 0.0;
 
       for ( i_local = 0; i_local < local_n0; i_local++ ) {
       for ( j = 0; j < Ny; j++ ) {
@@ -1878,12 +1983,19 @@ int main(int argc, char* argv[]) {
 
 	rho_sum_local = rho_sum_local + rho_local[index];
 
+	energy_local = energy_local + 
+	  rho_local[index]*(-0.5*ep*pow(psi_local[index],2)
+			    +0.5*alpha*pow(dfDlapPsi_local[index],2)
+			    -0.25*beta*pow(psi_local[index],4)
+			    +(gamma/6)*pow(psi_local[index],6));
       }}}
 
       MPI::COMM_WORLD.Reduce(&sumA_local,&sumA,1,MPI::DOUBLE,MPI::SUM,0);
       MPI::COMM_WORLD.Reduce(&sumB_local,&sumB,1,MPI::DOUBLE,MPI::SUM,0);
 
       MPI::COMM_WORLD.Reduce(&rho_sum_local,&rho_sum,1,MPI::DOUBLE,MPI::SUM,0);
+
+      MPI::COMM_WORLD.Reduce(&energy_local,&energy,1,MPI::DOUBLE,MPI::SUM,0);
 
       if ( rank == 0)
       {
@@ -1898,6 +2010,12 @@ int main(int argc, char* argv[]) {
 	assert(mass_output.is_open());
 	mass_output << rho_sum << "\n";
 	mass_output.close();	
+
+	energy = energy*dx*dx*dx;
+	energy_output.open(strBox+"energy.dat",std::ios_base::app); // append result
+	assert(energy_output.is_open());
+	energy_output << energy << "\n";
+	energy_output.close();	
       }
 
       MPI::COMM_WORLD.Bcast(&L1,1,MPI::DOUBLE,0);
@@ -1908,7 +2026,7 @@ int main(int argc, char* argv[]) {
 
       /* SAVE PSI & OBTAIN SURFACE INFO (under count condition) */
 
-      if ( countSave == 10 ) // 4
+      if ( countSave == stepSave ) // 4
       { 
 			 			 	
 	j = Ny/2;
@@ -2063,7 +2181,7 @@ int main(int argc, char* argv[]) {
 	for( i_local = 0; i_local < local_n0 ; i_local++ ){
 	  index  = (i_local*Ny +j)*Nz + k;
 	  index2 = i_local*Nz + k;
-	  psiSlice_local[index2] = divv_local[index];
+	  psiSlice_local[index2] = temp_local[index];
 	}}
 
 	MPI::COMM_WORLD.Gather(psiSlice_local.data(),alloc_slice,MPI::DOUBLE,
