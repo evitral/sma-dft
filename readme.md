@@ -1,33 +1,36 @@
 # sma-dft
 
-## A. adv: smectic-isotropic, advection is on, BLM is computed through a PPE in Fourier Space
+The purpose of the sma-dft project is to study the evolution of an interface between a smectic-A liquid crystal and a disordered phase. The present files contain an implementation of the models proposed in:
+(1) E. Vitral, P.H. Leo, J. Viñals, Physical Review E 100.3 (2019)
+(2) E. Vitral, P.H. Leo, J. Viñals, in preparation
 
-A1. cosAdvTrackMult.cpp
+These are custom C++ codes based on the parallel FFTW library and the standard MPI passing interface. Part A was the initial study of a smectic-A in contat with its isotropic phase of same density, describing a diffusive evolution of the interface without advection, whose results are found in Ref. (1). Part B is similar to A, but introduces advection to a uniform density system. Part C contains implementations of a quasi-incompressible smectic-isotropic system, presenting a varying density field between phases. The derivation, discussion and numerical results associated to this model will be published in Ref. (2).
 
-A2. cosAdvConSingle.cpp
 
-A3. cosAdvConConics.cpp
+## A. no-adv: smectic-iso, advection is off, uniform density
 
-A4. cosAdvConSameConics.cpp
+A1. cosNoAdvConics.cpp
 
-A5. cosAdvConDifConics.cpp
+A2. cosNoAdvTrackBump.cpp
 
-A6. cosAdvDensity.cpp : probably something really wrong
+A3. cosNoAdvTrackMult.cpp
 
-## B. no-adv: smectic-isotropic, advection is off
+A4. cosNoAdvTrackSing.cpp
 
-B1. cosNoAdvConics.cpp
+## B. adv: smectic-iso, advection is on, uniform density
 
-B2. cosNoAdvTrackBump.cpp
+B1. cosAdvTrackMult.cpp
 
-B3. cosNoAdvTrackMult.cpp
+B2. cosAdvConSingle.cpp
 
-B4. cosNoAdvTrackSing.cpp
+B3. cosAdvConConics.cpp
 
-## C. quasi: smectic-air, quasi incompressible
+B4. cosAdvConSameConics.cpp
 
-C1. quasi.cpp : doesn't look right
+B5. cosAdvConDifConics.cpp
 
-C2. quasi-mass.cpp : better, focal conic
+## C. quasi: smectic-iso, 
 
-C3. quasi-test.cpp : perturbations from flat
+C1. quasi.cpp : smectic-iso, quasi-incompressible model, varying density
+
+C2. quasi-stb.cpp : stability analysis

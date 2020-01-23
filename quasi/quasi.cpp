@@ -1,28 +1,34 @@
-/********************************************
- *                                          *
- *               quasi.cpp                  *
- *                                          *
- *     SmecticA 3D Phase Field FFTW in      *
- *     parallel. This code accounts for     *
- *     the complete model, but not          *
- *     gradients of the density.            *
- *                                          *
- *     (cos): DCT (and also DST!)           *
- *     (Adv): Advection is on               *
- *     (Curv): Save curvatures              *
- *     quasi: Quasi-incompressible eqns,    *
- *            varying density field         *        
- *                                          *
- *                                          *
- *     Last mod: 10/10/2019                 *
- *     Author: Eduardo Vitral               *
- *                                          *
- ********************************************/
+/**********************************************************
+ *                                                        *
+ *                       quasi.cpp                        *
+ *                                                        *
+ *     Author: Eduardo Vitral Freigedo Rodrigues          *
+ *     Affilitation: University of Minnesota              *
+ *     Last mod: 01/21/2020                               *
+ *                                                        *
+ *    Parallel FFTW implementation of a phase field       *
+ *    model for a 3D smectic-isotropic system of          *
+ *    varying density. We adopt quasi-incompressibility,  *
+ *    and the density is computed at every time step      *
+ *    from the order parameter (constitutive relation).   *
+ *    The model is built of an equation for the order     *
+ *    parameter, a balance of mass and a balance of       *
+ *    linear momentum. Details can be found at:           *
+ *    i)  Vitral et al, PRE 100(3)                        *
+ *    ii) Vitral et al, in preparation                    *
+ *                                                        *
+ *    Independent variables: order parameter, velocitiy   *
+ *                                                        *
+ *    Boundary conditions: no flux bcs                    *
+ *    i)  Order parameter: Neumann (DCT)                  *
+ *    ii) Velocity: no-slip (DST)                         *
+ *                                                        *
+ **********************************************************/
 
 /* General */
 
-#include <vector>
-#include <cassert>
+#include <vector>        // std containers
+#include <cassert>       
 #include <cstdlib>       // std::exit()
 #include <fftw3-mpi.h>
 
@@ -71,8 +77,7 @@ mpicxx -I /opt/fftw/3.3.8/intel/mvapich2_ib/include -O2 -o code code.cpp
  *                                          *
  *******************************************/    
 
-// If the wall potential for the substrate is on, go 
-// to the Time Loop and change the 3 sections with (S)
+// Possible wall potential (default off)
 
 double wallPotential(int z)
 {
@@ -134,7 +139,7 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-fc140-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-fc220-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -143,7 +148,7 @@ int main(int argc, char* argv[]) {
     curvH_output, curvK_output, sx_output, sy_output, sz_output, 
     divv_output, rho_output, p_output, info_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-fc140-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-fc220-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -168,8 +173,8 @@ int main(int argc, char* argv[]) {
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
   const double mid = Nx/2; 
-  const double aE = atof(argv[3]); // 270 (FC) // 80 // 312 // 432 // 248 // 810
-  const double bE = atof(argv[3]); // 270 (FC) // 86 // 376 // 520 // 248 // 810
+  const double aE = atof(argv[3]);   // focal conic dimensions
+  const double bE = atof(argv[3]);   // same to maintain layer spacing
 
   double xs, ys, zs, ds;
 
@@ -179,7 +184,7 @@ int main(int argc, char* argv[]) {
   const double beta  =  2.0; //2.0;
   const double alpha =  1.0;
   double ep_arg    = atof(argv[2]); 
-  const double ep = -0.001*ep_arg;  // -0.01, -0.001 for 675
+  const double ep = -0.001*ep_arg;
   const double q0    =  1.0;
   const double q02   = q0*q0;
 
@@ -195,7 +200,7 @@ int main(int argc, char* argv[]) {
 /* Points per wavelength, time step */
 	
   const int    Nw = 8;
-  const double dt = 0.001; // 0.0005	
+  const double dt = 0.001; // 0.0005 for nw = 16	
   const double dtd2  = dt/2;
 
 /* System size and scaling for FFT */
@@ -2302,17 +2307,14 @@ int main(int argc, char* argv[]) {
 	
   /** Destroy FFTW plans, cleanup **/
 
-  //  	fftw_destroy_plan(planPsi);
-  //fftw_destroy_plan(iPlanPsi);
   fftw_destroy_plan(planCT);
-
+  fftw_destroy_plan(iPlanCT);
   fftw_destroy_plan(planSTx);
   fftw_destroy_plan(iPlanSTx);
   fftw_destroy_plan(planSTy);
   fftw_destroy_plan(iPlanSTy);
   fftw_destroy_plan(planSTz);
   fftw_destroy_plan(iPlanSTz);
-  fftw_destroy_plan(iPlanCT);
 	
   fftw_cleanup();
 	
