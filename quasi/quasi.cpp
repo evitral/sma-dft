@@ -178,7 +178,7 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-test-fc140-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_compare/rho2to1/2fc-nw8-gap32-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -187,11 +187,12 @@ int main(int argc, char* argv[]) {
     curvH_output, curvK_output, sx_output, sy_output, sz_output,
     vsolx_output, vsoly_output, vsolz_output, 
     divv_output, rho_output, p_output, info_output,
-    egrx_output, egry_output, egrz_output;
+    fx_output, fy_output, fz_output,
+    energyMid_output;
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_fc/qsi-test-fc140-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_compare/rho2to1/2fc-nw8-gap32-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -200,12 +201,12 @@ int main(int argc, char* argv[]) {
   /* Save intervals */ 
 
   const int stepL1 = 50; // 50
-  const int stepSave = 4; // 10
-  const int divvSwitch = 200; // 200
+  const int stepSave = 10; // 4 or 10
+  const int divvSwitch = 200; // 100 or 200
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
+  const ptrdiff_t Nx = 512, Ny = 256, Nz = 256;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -218,6 +219,8 @@ int main(int argc, char* argv[]) {
   const double mid = Ny/2; 
   const double aE = atof(argv[3]);   // focal conic dimensions
   const double bE = atof(argv[3]);   // same to maintain layer spacing
+  double aE2, bE2; // 2nd focal conic
+  double gap = 32;
 
   double xs, ys, zs, ds;
 
@@ -228,15 +231,15 @@ int main(int argc, char* argv[]) {
   const double alpha =  1.0;
   double ep_arg    = atof(argv[2]); 
   const double ep = -0.001*ep_arg;
-  const double q0    =  1.0;
+  const double q0    =  1.0; 
   const double q02   = q0*q0;
 
 /* Balance of Linear Momentum parameters */
 
   double nu = atof(argv[1]);
   double Amp = 1.34164; //1.328; 
-  double rho_0 = 0.5; // 0.05
-  double kp = 0.3755; // 0.5 for nw= 8
+  double rho_0 = 0.5; // 0.5
+  double kp = 0.3755; // 0.3755 for rho_s = 1, with rho_a = 0.5
   double rho_s = kp*Amp+rho_0;
   double rho_m = rho_s/2; // was divided by 2
   double lambda = -2*nu/3;
@@ -244,7 +247,7 @@ int main(int argc, char* argv[]) {
 /* Points per wavelength, time step */
 	
   const int    Nw = 8;
-  const double dt = 0.001; // 0.0005 for nw = 16	
+  const double dt = 0.001; // 0.0005 for nw = 16, 0.001 for nw = 8	
   const double dtd2  = dt/2;
 
 /* System size and scaling for FFT */
@@ -264,8 +267,8 @@ int main(int argc, char* argv[]) {
 
  /* Perturbed smectic layers (off for focal conic) */
 
-  double Qi  = 0.125/2; // Perturbation wavelength (was over 2)
-  double phi = Nw;
+  double Qi  = 0.125/2; //0.125/2; // Perturbation wavelength (was over 2)
+  double phi = 0;  // Nw
 
 
 
@@ -354,6 +357,10 @@ int main(int argc, char* argv[]) {
   std::vector<double> Sx_local(alloc_local);
   std::vector<double> Sy_local(alloc_local);
   std::vector<double> Sz_local(alloc_local);
+
+  std::vector<double> fx_local(alloc_local);
+  std::vector<double> fy_local(alloc_local);
+  std::vector<double> fz_local(alloc_local);
 
   std::vector<double> vsolx_local(alloc_local);
   std::vector<double> vsoly_local(alloc_local);
@@ -577,6 +584,8 @@ int main(int argc, char* argv[]) {
 
     std::fill(psi_local.begin(),psi_local.end(),0);  
 
+    /** Perturbed smectic **/
+
     // for ( i_local = 0; i_local < local_n0; i_local++ ) {
     // for ( j = 0; j < Ny; j++ ) {
     // for ( k = 0; k < Nz; k++ ) 
@@ -594,110 +603,113 @@ int main(int argc, char* argv[]) {
     //   }
     // }}}
 
-    // for ( i_local = 0; i_local < local_n0; i_local++ )
-    //   {
-    // 	i = i_local + local_0_start;
+    /** Multiple focal conics **/
+
+    for ( i_local = 0; i_local < local_n0; i_local++ )
+      {
+    	i = i_local + local_0_start;
 	
-    // 	for ( j = 0; j < Ny; j++ ) {
-    // 	for ( k = 0; k < Nz; k++ )
-    // 	{
-    // 	  index = (i_local*Ny + j) * Nz + k;
+    	for ( j = 0; j < Ny; j++ ) {
+    	for ( k = 0; k < Nz; k++ )
+    	{
+    	  index = (i_local*Ny + j) * Nz + k;
 
-    // 	  // 1024 x 1024 x 512                                            
-    // 	  // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
-    // 	  // 1024 x 512 x 512                                             
-    // 	  if (i >= Nx/2) { i2 = i - Nx/2; j2 = j;}
+    	  // 1024 x 1024 x 512                                            
+    	  // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
+    	  // 1024 x 512 x 512                                             
+    	  if (i >= Nx/2) { i2 = i - Nx/2; j2 = j; aE2 = aE + gap; bE2 = bE + gap; }
 	      
-    // 	  else { i2 = i; j2 = j ;}
+    	  else { i2 = i; j2 = j; aE2 = aE; bE2 = bE; }
 
-    // 	  if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450               
-    // 	  {
-    // 	    xs = i2 - mid;
-    // 	    ys = j2 - mid;
-    // 	    // zs = k + mid*3/4;                                    
-    // 	    zs = k;
-    // 	    // zs = k-mid for hyperboloid in the middle             
-    // 	    // zs = k for hyperboloid in the botton                 
-    // 	    ds = sqrt(xs*xs+ys*ys);
-    // 	    if (ds < mid)
-    // 	    {
-    // 	      if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-    // 	      {
-    // 		psi_local[index] = 0.0;
-    // 	      }
-    // 	      else
-    // 	      {
-    // 		psi_local[index] = Amp*cos(q0*dz*
-    // 					   sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-    // 	      }
-    // 	    }
-    // 	    else
-    // 	    {
-    // 	      if (abs(zs) < bE)
-    // 	      {
-    // 		psi_local[index] = Amp*cos(q0*zs*dz);
-    // 	      }
-    // 	      else
-    // 	      {
-    // 		psi_local[index] = 0.0;
-    // 	      }
-    // 	    }
-    // 	  }
-    // 	  else
-    // 	  {
-    // 	    psi_local[index] = 0.0;
-    // 	  }
-    // 	}}
-    //   } // close IC assign     
+    	  if ( k <  bE2 + 1 ) // 18 110 // 24 232  // 62 450               
+    	  {
+    	    xs = i2 - mid;
+    	    ys = j2 - mid;
+    	    // zs = k + mid*3/4;                                    
+    	    zs = k;
+    	    // zs = k-mid for hyperboloid in the middle             
+    	    // zs = k for hyperboloid in the botton                 
+    	    ds = sqrt(xs*xs+ys*ys);
+    	    if (ds < mid)
+    	    {
+    	      if (sqrt(pow((ds-mid)/aE2,2)+pow(zs/bE2,2)) > 1)
+    	      {
+    		psi_local[index] = 0.0;
+    	      }
+    	      else
+    	      {
+    		psi_local[index] = Amp*cos(q0*dz*
+    					   sqrt(pow((bE2/aE2)*(ds-mid),2)+zs*zs));
+    	      }
+    	    }
+    	    else
+    	    {
+    	      if (abs(zs) < bE2)
+    	      {
+    		psi_local[index] = Amp*cos(q0*zs*dz);
+    	      }
+    	      else
+    	      {
+    		psi_local[index] = 0.0;
+    	      }
+    	    }
+    	  }
+    	  else
+    	  {
+    	    psi_local[index] = 0.0;
+    	  }
+    	}}
+      } // close IC assign     
 
+    /** Single focal conic **/
 
-    for ( i_local = 0; i_local < local_n0; i_local++ ) 
-    {
-      i = i_local + local_0_start;
+    // for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    // {
+    //   i = i_local + local_0_start;
 
-      for ( j = 0; j < Ny; j++ ) {
-      for ( k = 0; k < Nz; k++ ) 
-      {	
-        index = (i_local*Ny + j) * Nz + k;
-        if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-        {		
-          xs = i - mid;
-          ys = j - mid;
-          // zs = k + mid*3/4; 
-          zs = k;
-          // zs = k-mid for hyperboloid in the middle
-          // zs = k for hyperboloid in the botton
-          ds = sqrt(xs*xs+ys*ys);
-          if (ds < mid)
-          {
-    	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-    	{
-    	  psi_local[index] = 0.0;
-    	}
-    	else
-    	{
-    	  psi_local[index] = Amp*cos(q0*dz*
-    				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-    	}
-          }
-          else
-          {
-    	if (abs(zs) < bE)
-    	{
-    	  psi_local[index] = Amp*cos(q0*zs*dz);
-    	}
-    	else
-    	{
-    	  psi_local[index] = 0.0;
-    	}
-          }		 
-        }
-        else
-          {
-    	psi_local[index] = 0.0;
-          }
-      }}
-    } // close IC assign
+    //   for ( j = 0; j < Ny; j++ ) {
+    //   for ( k = 0; k < Nz; k++ ) 
+    //   {	
+    //     index = (i_local*Ny + j) * Nz + k;
+    //     if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
+    //     {		
+    //       xs = i - mid;
+    //       ys = j - mid;
+    //       // zs = k + mid*3/4; 
+    //       zs = k;
+    //       // zs = k-mid for hyperboloid in the middle
+    //       // zs = k for hyperboloid in the botton
+    //       ds = sqrt(xs*xs+ys*ys);
+    //       if (ds < mid)
+    //       {
+    // 	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+    // 	{
+    // 	  psi_local[index] = 0.0;
+    // 	}
+    // 	else
+    // 	{
+    // 	  psi_local[index] = Amp*cos(q0*dz*
+    // 				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+    // 	}
+    //       }
+    //       else
+    //       {
+    // 	if (abs(zs) < bE)
+    // 	{
+    // 	  psi_local[index] = Amp*cos(q0*zs*dz);
+    // 	}
+    // 	else
+    // 	{
+    // 	  psi_local[index] = 0.0;
+    // 	}
+    //       }		 
+    //     }
+    //     else
+    //       {
+    // 	psi_local[index] = 0.0;
+    //       }
+    //   }}
+    // } // close IC assign
 
 
 /* Output IC to file  */
@@ -846,6 +858,12 @@ int main(int argc, char* argv[]) {
     assert(psiMid_output.is_open());
     psiMid_output.close();
 
+    /** Create energyMid output **/
+
+    std::ofstream energyMid_output(strBox+"energyMid.dat");
+    assert(energyMid_output.is_open());
+    energyMid_output.close();
+
     /** Create velocity outputs **/
 
     std::ofstream sx_output(strBox+"vx.dat");
@@ -858,7 +876,7 @@ int main(int argc, char* argv[]) {
     sy_output.close();
     sz_output.close();
 
-    /** Create force outputs **/
+    /** Create solenoidal vel outputs **/
 
     std::ofstream vsolx_output(strBox+"vsolx.dat");
     std::ofstream vsoly_output(strBox+"vsoly.dat");
@@ -869,6 +887,19 @@ int main(int argc, char* argv[]) {
     vsolx_output.close();
     vsoly_output.close();
     vsolz_output.close();
+
+    /** Create projected force outputs **/
+
+    std::ofstream fx_output(strBox+"fx.dat");
+    std::ofstream fy_output(strBox+"fy.dat");
+    std::ofstream fz_output(strBox+"fz.dat");
+    assert(fx_output.is_open());
+    assert(fy_output.is_open());
+    assert(fz_output.is_open());
+    fx_output.close();
+    fy_output.close();
+    fz_output.close();
+
 
     /** Create divv and rho outputs **/
 
@@ -883,20 +914,6 @@ int main(int argc, char* argv[]) {
     std::ofstream p_output(strBox+"p.dat");
     assert(p_output.is_open());
     p_output.close();
-
-
-
-    /** Create energy  **/
-
-    std::ofstream egrx_output(strBox+"egrx.dat");
-    std::ofstream egry_output(strBox+"egry.dat");
-    std::ofstream egrz_output(strBox+"egrz.dat");
-    assert(egrx_output.is_open());
-    assert(egry_output.is_open());
-    assert(egrz_output.is_open());
-    egrx_output.close();
-    egry_output.close();
-    egrz_output.close();
 
 		
   }
@@ -1314,7 +1331,11 @@ int main(int argc, char* argv[]) {
 
     /* Compute divv and lapRhoDfDlapPsi */
 
-    if (nLoop > divvSwitch){
+    if (load == 1 && nLoop == 1) {
+      rho_old_local = rho_local;
+    }
+
+    if (nLoop > divvSwitch || load == 1){
       for ( i_local = 0; i_local < local_n0; i_local++ ){
       for ( j = 0; j < Ny; j++ ) {
       for ( k = 0; k < Nz; k++ ) 
@@ -1427,11 +1448,11 @@ int main(int argc, char* argv[]) {
       Sx_local[index] =	mu_local[index]*psiGradx_local[index] + 
 	energy_local[index]*rhoDx_local[index];
 
-	Sy_local[index] = mu_local[index]*psiGrady_local[index] + 
-	  energy_local[index]*rhoDy_local[index];
+      Sy_local[index] = mu_local[index]*psiGrady_local[index] + 
+	energy_local[index]*rhoDy_local[index];
 
-	Sz_local[index] = mu_local[index]*psiGradz_local[index] + 
-	  energy_local[index]*rhoDz_local[index];
+      Sz_local[index] = mu_local[index]*psiGradz_local[index] + 
+	energy_local[index]*rhoDz_local[index];
 
     }}}
 
@@ -1548,6 +1569,10 @@ int main(int argc, char* argv[]) {
     std::fill(vely_local.begin(),vely_local.end(),0);
     std::fill(velz_local.begin(),velz_local.end(),0);
 
+    std::fill(fx_local.begin(),fx_local.end(),0);
+    std::fill(fy_local.begin(),fy_local.end(),0);
+    std::fill(fz_local.begin(),fz_local.end(),0);
+
     // Send Sz and Sy i_local=0 data to previous rank
 
     i_local = 0;
@@ -1662,6 +1687,8 @@ int main(int argc, char* argv[]) {
 	velx_local[index] = vsolx_local[index]+
 	  CM1x[index]*(nu*Vsx[i_local]*psi_front3[index2]);
 
+	fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+
       }}
     } 	 
 
@@ -1688,6 +1715,9 @@ int main(int argc, char* argv[]) {
 
       velx_local[index] = vsolx_local[index]+
 	CM1x[index]*(nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+
+      fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+
     }}}
 
 
@@ -1712,6 +1742,9 @@ int main(int argc, char* argv[]) {
 
       velx_local[index] = vsolx_local[index]+
 	CM1x[index]*(nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+
+      fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+
     }}
 
     // 3. Case j > 0, k = 0
@@ -1735,6 +1768,9 @@ int main(int argc, char* argv[]) {
 	   	     
       velx_local[index] = vsolx_local[index] +
 	CM1x[index]*(nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+
+      fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+    
     }}
 
 
@@ -1758,6 +1794,9 @@ int main(int argc, char* argv[]) {
 	   	     
       velx_local[index] = vsolx_local[index] +
 	CM1x[index]*(nu*Vsx[i_local]*divv_local[index+Ny*Nz]);
+    
+      fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+
     }
 
     // B. vely and velz 
@@ -1832,6 +1871,8 @@ int main(int argc, char* argv[]) {
       vely_local[index] = vsoly_local[index] + 
 	CM1y[index]*(nu*Vsy[j]*divv_local[index+Nz]);
 	   
+      fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+
       index2 = j*Nz+k+1;
       Sx = psi_back[index2];	     	     
 
@@ -1849,6 +1890,9 @@ int main(int argc, char* argv[]) {
 	   	     
       velz_local[index] = vsolz_local[index]+
 	CM1z[index]*(nu*Vsz[k]*divv_local[index+1]);
+
+      fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+
     }}
 
     // Compute vely and velz for the rest
@@ -1877,6 +1921,8 @@ int main(int argc, char* argv[]) {
       vely_local[index] = vsoly_local[index] +
 	CM1y[index]*(nu*Vsy[j]*divv_local[index+Nz]);
 
+      fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+
       // velz
 
       index2 = ((i_local-1)*Ny + j) * Nz + k+1;
@@ -1892,6 +1938,9 @@ int main(int argc, char* argv[]) {
 	     
       velz_local[index] = vsolz_local[index] +
 	CM1z[index]*(nu*Vsz[k]*divv_local[index+1]);
+
+      fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+
     }}}
 
     // 2. Case j = 0, k > 0
@@ -1919,6 +1968,8 @@ int main(int argc, char* argv[]) {
       vely_local[index] = vsoly_local[index] +
 	CM1y[index]*(nu*Vsy[j]*divv_local[index+Nz]);
 
+      fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+
       // velz , Sy = 0;
 
       index2 = ((i_local-1)*Ny + j) * Nz + k+1;
@@ -1931,6 +1982,9 @@ int main(int argc, char* argv[]) {
 	     
       velz_local[index] = vsolz_local[index] +
 	CM1z[index]*(nu*Vsz[k]*divv_local[index+1]);
+
+      fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+
     }}
     
     // 3. Case j > 0, k = 0
@@ -1955,6 +2009,8 @@ int main(int argc, char* argv[]) {
       vely_local[index] = vsoly_local[index] +
 	CM1y[index]*(nu*Vsy[j]*divv_local[index+Nz]);
       
+      fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+
       // velz
 
       index2 = ((i_local-1)*Ny + j) * Nz + k+1;
@@ -1970,6 +2026,9 @@ int main(int argc, char* argv[]) {
 	     
       velz_local[index] = vsolz_local[index] +
 	CM1z[index]*(nu*Vsz[k]*divv_local[index+1]);
+
+      fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+
     }}
 
 
@@ -1995,6 +2054,8 @@ int main(int argc, char* argv[]) {
       vely_local[index] = vsoly_local[index] +
 	CM1y[index]*(nu*Vsy[j]*divv_local[index+Nz]);
 
+      fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+
       // velz, Sy = 0;	   
 
       index2 = ((i_local-1)*Ny + j) * Nz + k+1;
@@ -2007,7 +2068,12 @@ int main(int argc, char* argv[]) {
 	     
       velz_local[index] = vsolz_local[index] +
 	CM1z[index]*(nu*Vsz[k]*divv_local[index+1]);
+   
+      fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+
     }
+
+    // solenoidal + irrotational velocity
 
     trans_local = velx_local;
     fftw_execute(iPlanSTx);
@@ -2020,38 +2086,6 @@ int main(int argc, char* argv[]) {
     trans_local = velz_local;
     fftw_execute(iPlanSTz);
     velz_local = trans_local;
-
-    // solenoidal part of the velocity
-
-    trans_local = vsolx_local;
-    fftw_execute(iPlanSTx);
-    vsolx_local = trans_local;
-		 
-    trans_local = vsoly_local;
-    fftw_execute(iPlanSTy);
-    vsoly_local = trans_local;
-
-    trans_local = vsolz_local;
-    fftw_execute(iPlanSTz);
-    vsolz_local = trans_local;
-
-
-
-    // Just for saving divv
-
-    for ( i_local = 0; i_local < local_n0; i_local++ ){
-    for ( j = 0; j < Ny; j++ ) {
-    for ( k = 0; k < Nz; k++ ) 
-    {
-      index =  (i_local*Ny + j)*Nz + k;
-	   
-      divv_local[index] = scale*divv_local[index];
-
-    }}}
-
-    trans_local = divv_local;
-    fftw_execute(iPlanCT);
-    divv_local = trans_local;
 
 
     /* COMPUTE: CURRENT Nr_local (S)*/
@@ -2257,6 +2291,53 @@ int main(int argc, char* argv[]) {
 		velz_local, sz_output, strBox, "vz.dat");
 
 
+
+	// solenoidal part of the velocity
+
+	trans_local = vsolx_local;
+	fftw_execute(iPlanSTx);
+	vsolx_local = trans_local;
+		 
+	trans_local = vsoly_local;
+	fftw_execute(iPlanSTy);
+	vsoly_local = trans_local;
+
+	trans_local = vsolz_local;
+	fftw_execute(iPlanSTz);
+	vsolz_local = trans_local;
+
+
+	// force projection filtered by pressure
+
+	trans_local = fx_local;
+	fftw_execute(iPlanSTx);
+	fx_local = trans_local;
+		 
+	trans_local = fy_local;
+	fftw_execute(iPlanSTy);
+	fy_local = trans_local;
+
+	trans_local = fz_local;
+	fftw_execute(iPlanSTz);
+	fz_local = trans_local;
+
+
+	// Just for saving divv
+
+	for ( i_local = 0; i_local < local_n0; i_local++ ){
+	for ( j = 0; j < Ny; j++ ) {
+	for ( k = 0; k < Nz; k++ ) 
+	{
+	  index =  (i_local*Ny + j)*Nz + k;
+	   
+	  divv_local[index] = scale*divv_local[index];
+
+	}}}
+
+	trans_local = divv_local;
+	fftw_execute(iPlanCT);
+	divv_local = trans_local;
+
 	// Save solenoidal velocity
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
@@ -2267,6 +2348,17 @@ int main(int argc, char* argv[]) {
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
 		vsolz_local, vsolz_output, strBox, "vsolz.dat");
+
+	// Save projected force
+
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+		fx_local, fx_output, strBox, "fx.dat");
+
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+		fy_local, fy_output, strBox, "fy.dat");
+
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+		fz_local, fz_output, strBox, "fz.dat");
 
 	// Save divergence of the  velocity
 
@@ -2283,47 +2375,10 @@ int main(int argc, char* argv[]) {
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
 		rho_local, rho_output, strBox, "rho.dat");
 
-
-	// Save e grad rho
-
-	for ( i_local = 0; i_local < local_n0; i_local++ ) {
-	for ( j = 0; j < Ny; j++ ) {
-	for ( k = 0; k < Nz; k++ )
-	{
-	  index = (i_local*Ny + j) * Nz + k;
-
-	  trans_local[index] = energy_local[index]*rhoDx_local[index];
-
-	}}}
+	// Save energy
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		trans_local, egrx_output, strBox, "egrx.dat");
-
-	for ( i_local = 0; i_local < local_n0; i_local++ ) {
-	for ( j = 0; j < Ny; j++ ) {
-	for ( k = 0; k < Nz; k++ )
-	{
-	  index = (i_local*Ny + j) * Nz + k;
-
-	  trans_local[index] = energy_local[index]*rhoDy_local[index];
-
-	}}}
-
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		trans_local, egry_output, strBox, "egry.dat");
-
-	for ( i_local = 0; i_local < local_n0; i_local++ ) {
-	for ( j = 0; j < Ny; j++ ) {
-	for ( k = 0; k < Nz; k++ )
-	{
-	  index = (i_local*Ny + j) * Nz + k;
-
-	  trans_local[index] = energy_local[index]*rhoDz_local[index];
-
-	}}}
-
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		trans_local, egrz_output, strBox, "egrz.dat");
+		energy_local, energyMid_output, strBox, "energyMid.dat");
 
 
 	MPI::COMM_WORLD.Barrier();
