@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
 
 /* Ints and doubles for surface info */
 
-  int index1, index2, i2, j2, k2;
+  int index1, index2, i2, j2, k2, track;
 	
 /* Load/save parameters */
 
@@ -178,21 +178,22 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_compare/rho2to1/2fc-nw8-gap32-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/quasi_compare/uniform/fc-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
 
   std::ofstream psiMid_output, surf_output, velS_output, 
-    curvH_output, curvK_output, sx_output, sy_output, sz_output,
+    curvH_output, curvK_output, vx_output, vy_output, vz_output,
     vsolx_output, vsoly_output, vsolz_output, 
     divv_output, rho_output, p_output, info_output,
     fx_output, fy_output, fz_output,
-    energyMid_output;
+    sx_output, sy_output, sz_output,
+    energyMid_output, surface_output;
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_compare/rho2to1/2fc-nw8-gap32-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/quasi_compare/uniform/fc-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -206,7 +207,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 512, Ny = 256, Nz = 256;
+  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -220,7 +221,7 @@ int main(int argc, char* argv[]) {
   const double aE = atof(argv[3]);   // focal conic dimensions
   const double bE = atof(argv[3]);   // same to maintain layer spacing
   double aE2, bE2; // 2nd focal conic
-  double gap = 32;
+  double gap = 0; //32
 
   double xs, ys, zs, ds;
 
@@ -238,8 +239,8 @@ int main(int argc, char* argv[]) {
 
   double nu = atof(argv[1]);
   double Amp = 1.34164; //1.328; 
-  double rho_0 = 0.5; // 0.5
-  double kp = 0.3755; // 0.3755 for rho_s = 1, with rho_a = 0.5
+  double rho_0 = 1.0; // 0.5
+  double kp = 0.0; // 0.3755 for rho_s = 1, with rho_a = 0.5
   double rho_s = kp*Amp+rho_0;
   double rho_m = rho_s/2; // was divided by 2
   double lambda = -2*nu/3;
@@ -358,6 +359,10 @@ int main(int argc, char* argv[]) {
   std::vector<double> Sy_local(alloc_local);
   std::vector<double> Sz_local(alloc_local);
 
+  std::vector<double> Sx2_local(alloc_local);
+  std::vector<double> Sy2_local(alloc_local);
+  std::vector<double> Sz2_local(alloc_local);
+
   std::vector<double> fx_local(alloc_local);
   std::vector<double> fy_local(alloc_local);
   std::vector<double> fz_local(alloc_local);
@@ -418,11 +423,12 @@ int main(int argc, char* argv[]) {
 /* Local data containers (surface info) */
 
   std::vector<double> psiSlice_local(alloc_slice);
+  std::vector<double> surfZ_local(alloc_surf);
 		
 /* Global data containers (surface info)*/
 
   std::vector<double> psiSlice(size*alloc_slice);
-  	
+  std::vector<double> surfZ(size*alloc_surf);
 
 /********************************************
  *                                          *
@@ -605,111 +611,114 @@ int main(int argc, char* argv[]) {
 
     /** Multiple focal conics **/
 
-    for ( i_local = 0; i_local < local_n0; i_local++ )
-      {
-    	i = i_local + local_0_start;
+    // for ( i_local = 0; i_local < local_n0; i_local++ )
+    //   {
+    // 	i = i_local + local_0_start;
 	
-    	for ( j = 0; j < Ny; j++ ) {
-    	for ( k = 0; k < Nz; k++ )
-    	{
-    	  index = (i_local*Ny + j) * Nz + k;
+    // 	for ( j = 0; j < Ny; j++ ) {
+    // 	for ( k = 0; k < Nz; k++ )
+    // 	{
+    // 	  index = (i_local*Ny + j) * Nz + k;
 
-    	  // 1024 x 1024 x 512                                            
-    	  // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
-    	  // 1024 x 512 x 512                                             
-    	  if (i >= Nx/2) { i2 = i - Nx/2; j2 = j; aE2 = aE + gap; bE2 = bE + gap; }
+    // 	  // 1024 x 1024 x 512                                            
+    // 	  // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
+    // 	  // 1024 x 512 x 512                                             
+    // 	  if (i >= Nx/2) { i2 = i - Nx/2; j2 = j; aE2 = aE + gap; bE2 = bE + gap; }
 	      
-    	  else { i2 = i; j2 = j; aE2 = aE; bE2 = bE; }
+    // 	  else { i2 = i; j2 = j; aE2 = aE; bE2 = bE; }
 
-    	  if ( k <  bE2 + 1 ) // 18 110 // 24 232  // 62 450               
-    	  {
-    	    xs = i2 - mid;
-    	    ys = j2 - mid;
-    	    // zs = k + mid*3/4;                                    
-    	    zs = k;
-    	    // zs = k-mid for hyperboloid in the middle             
-    	    // zs = k for hyperboloid in the botton                 
-    	    ds = sqrt(xs*xs+ys*ys);
-    	    if (ds < mid)
-    	    {
-    	      if (sqrt(pow((ds-mid)/aE2,2)+pow(zs/bE2,2)) > 1)
-    	      {
-    		psi_local[index] = 0.0;
-    	      }
-    	      else
-    	      {
-    		psi_local[index] = Amp*cos(q0*dz*
-    					   sqrt(pow((bE2/aE2)*(ds-mid),2)+zs*zs));
-    	      }
-    	    }
-    	    else
-    	    {
-    	      if (abs(zs) < bE2)
-    	      {
-    		psi_local[index] = Amp*cos(q0*zs*dz);
-    	      }
-    	      else
-    	      {
-    		psi_local[index] = 0.0;
-    	      }
-    	    }
-    	  }
-    	  else
-    	  {
-    	    psi_local[index] = 0.0;
-    	  }
-    	}}
-      } // close IC assign     
+    // 	  //aE2 = aE*(1.2-0.4*static_cast<double>(i)/512);
+    // 	  bE2 = bE*(1.2-0.4*static_cast<double>(i)/512);
+
+    // 	  if ( k <  bE2 + 1 ) // 18 110 // 24 232  // 62 450               
+    // 	  {
+    // 	    xs = i2 - mid;
+    // 	    ys = j2 - mid;
+    // 	    // zs = k + mid*3/4;                                    
+    // 	    zs = k;
+    // 	    // zs = k-mid for hyperboloid in the middle             
+    // 	    // zs = k for hyperboloid in the botton                 
+    // 	    ds = sqrt(xs*xs+ys*ys);
+    // 	    if (ds < mid)
+    // 	    {
+    // 	      if (sqrt(pow((ds-mid)/aE2,2)+pow(zs/bE2,2)) > 1)
+    // 	      {
+    // 		psi_local[index] = 0.0;
+    // 	      }
+    // 	      else
+    // 	      {
+    // 		psi_local[index] = Amp*cos(((-0.4*q0/512)*static_cast<double>(i)+1.2*q0)*dz*
+    // 					   sqrt(pow((bE2/aE2)*(ds-mid),2)+zs*zs));
+    // 	      }
+    // 	    }
+    // 	    else
+    // 	    {
+    // 	      if (abs(zs) < bE2)
+    // 	      {
+    // 		psi_local[index] = Amp*cos(((-0.4*q0/512)*static_cast<double>(i)+1.2*q0)*zs*dz);
+    // 	      }
+    // 	      else
+    // 	      {
+    // 		psi_local[index] = 0.0;
+    // 	      }
+    // 	    }
+    // 	  }
+    // 	  else
+    // 	  {
+    // 	    psi_local[index] = 0.0;
+    // 	  }
+    // 	}}
+    //   } // close IC assign     
 
     /** Single focal conic **/
 
-    // for ( i_local = 0; i_local < local_n0; i_local++ ) 
-    // {
-    //   i = i_local + local_0_start;
+    for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    {
+      i = i_local + local_0_start;
 
-    //   for ( j = 0; j < Ny; j++ ) {
-    //   for ( k = 0; k < Nz; k++ ) 
-    //   {	
-    //     index = (i_local*Ny + j) * Nz + k;
-    //     if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-    //     {		
-    //       xs = i - mid;
-    //       ys = j - mid;
-    //       // zs = k + mid*3/4; 
-    //       zs = k;
-    //       // zs = k-mid for hyperboloid in the middle
-    //       // zs = k for hyperboloid in the botton
-    //       ds = sqrt(xs*xs+ys*ys);
-    //       if (ds < mid)
-    //       {
-    // 	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-    // 	{
-    // 	  psi_local[index] = 0.0;
-    // 	}
-    // 	else
-    // 	{
-    // 	  psi_local[index] = Amp*cos(q0*dz*
-    // 				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-    // 	}
-    //       }
-    //       else
-    //       {
-    // 	if (abs(zs) < bE)
-    // 	{
-    // 	  psi_local[index] = Amp*cos(q0*zs*dz);
-    // 	}
-    // 	else
-    // 	{
-    // 	  psi_local[index] = 0.0;
-    // 	}
-    //       }		 
-    //     }
-    //     else
-    //       {
-    // 	psi_local[index] = 0.0;
-    //       }
-    //   }}
-    // } // close IC assign
+      for ( j = 0; j < Ny; j++ ) {
+      for ( k = 0; k < Nz; k++ ) 
+      {	
+        index = (i_local*Ny + j) * Nz + k;
+        if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
+        {		
+          xs = i - mid;
+          ys = j - mid;
+          // zs = k + mid*3/4; 
+          zs = k;
+          // zs = k-mid for hyperboloid in the middle
+          // zs = k for hyperboloid in the botton
+          ds = sqrt(xs*xs+ys*ys);
+          if (ds < mid)
+          {
+    	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+    	{
+    	  psi_local[index] = 0.0;
+    	}
+    	else
+    	{
+    	  psi_local[index] = Amp*cos(q0*dz*
+    				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+    	}
+          }
+          else
+          {
+    	if (abs(zs) < bE)
+    	{
+    	  psi_local[index] = Amp*cos(q0*zs*dz);
+    	}
+    	else
+    	{
+    	  psi_local[index] = 0.0;
+    	}
+          }		 
+        }
+        else
+          {
+    	psi_local[index] = 0.0;
+          }
+      }}
+    } // close IC assign
 
 
 /* Output IC to file  */
@@ -866,15 +875,15 @@ int main(int argc, char* argv[]) {
 
     /** Create velocity outputs **/
 
-    std::ofstream sx_output(strBox+"vx.dat");
-    std::ofstream sy_output(strBox+"vy.dat");
-    std::ofstream sz_output(strBox+"vz.dat");
-    assert(sx_output.is_open());
-    assert(sy_output.is_open());
-    assert(sz_output.is_open());
-    sx_output.close();
-    sy_output.close();
-    sz_output.close();
+    std::ofstream vx_output(strBox+"vx.dat");
+    std::ofstream vy_output(strBox+"vy.dat");
+    std::ofstream vz_output(strBox+"vz.dat");
+    assert(vx_output.is_open());
+    assert(vy_output.is_open());
+    assert(vz_output.is_open());
+    vx_output.close();
+    vy_output.close();
+    vz_output.close();
 
     /** Create solenoidal vel outputs **/
 
@@ -900,6 +909,17 @@ int main(int argc, char* argv[]) {
     fy_output.close();
     fz_output.close();
 
+    /** Create actual force outputs **/
+
+    std::ofstream sx_output(strBox+"sx.dat");
+    std::ofstream sy_output(strBox+"sy.dat");
+    std::ofstream sz_output(strBox+"sz.dat");
+    assert(sx_output.is_open());
+    assert(sy_output.is_open());
+    assert(sz_output.is_open());
+    sx_output.close();
+    sy_output.close();
+    sz_output.close();
 
     /** Create divv and rho outputs **/
 
@@ -915,7 +935,11 @@ int main(int argc, char* argv[]) {
     assert(p_output.is_open());
     p_output.close();
 
-		
+
+    // Surface output
+    std::ofstream surf_output(strBox+"surfPsi.dat");
+    assert(surf_output.is_open());
+    surf_output.close();		
   }
 
 
@@ -1300,12 +1324,19 @@ int main(int argc, char* argv[]) {
     for ( k = 0; k < Nz; k++ ) 
     {
       index =  (i_local*Ny + j)*Nz + k;
+
+      i = i_local + local_0_start;
 	   
       rho_local[index] = 
+	//(static_cast<double>(i)/512)*
 	kp*sqrt(q02*pow(psi_local[index],2)
-	    +pow(psiGradx_local[index],2)
-	    +pow(psiGrady_local[index],2)
-	    +pow(psiGradz_local[index],2))+rho_0;	     	       
+		+pow(psiGradx_local[index],2)
+		+pow(psiGrady_local[index],2)
+		+pow(psiGradz_local[index],2))+rho_0;
+	//+(1-static_cast<double>(i)/512)*kp*Amp;
+      // if (i < 256 & k > 160){
+      // 	rho_local[index] = rho_local[index]+0.5;
+      // }
     }}}
 
     trans_local = rho_local;
@@ -1455,6 +1486,10 @@ int main(int argc, char* argv[]) {
 	energy_local[index]*rhoDz_local[index];
 
     }}}
+
+    Sx2_local = Sx_local;
+    Sy2_local = Sy_local;
+    Sz2_local = Sz_local;
 
     trans_local = Sx_local;
     fftw_execute(planSTx);
@@ -2223,6 +2258,53 @@ int main(int argc, char* argv[]) {
 
       if ( countSave == stepSave ) // 4
       { 
+
+	// Surface Track
+
+	for ( i_local = 0; i_local < local_n0; i_local++ ) {
+	for ( j = 0; j < Ny; j++ ) 
+	{	
+	  track = 0;
+	  index2 = i_local*Ny + j;
+
+	  for ( k = Nz-1; k > -1; k-- ) 
+	  {
+
+	    index = (i_local*Ny + j) * Nz + k;
+
+	    if ( rho_local[index] > rho_0 + 0.2 )
+	    {
+	      surfZ_local[index2] = k;
+	      break;
+	    }
+
+	    // 0.7 : results are better when looking for this 0
+	    // if ( psi_local[index] > 0.7 & track == 0 ) 
+	    // {
+	    //   track = 1;
+	    // }
+	    // if ( psi_local[index] < 0.0 & track == 1 ) //std::abs(...) > 0.7
+	    // {
+	    //   k2 = k;
+
+	    //   if( std::abs(psi_local[index]) > std::abs(psi_local[index+1]) ) // >
+	    //   {
+	    // 	index = index + 1;
+	    // 	k2 = k + 1;
+	    //   }
+		    
+	    //   surfZ_local[index2] = k2;
+				
+	    //   track = 2;
+	    // }
+	  }}
+	}
+
+	MPI::COMM_WORLD.Gather(surfZ_local.data(),alloc_surf,MPI::DOUBLE,
+			       surfZ.data(),alloc_surf, MPI::DOUBLE,0);
+
+	// end surface track
+
 			 			 	
 	j = Ny/2;
 	for( k = 0; k < Nz ; k++ ){
@@ -2252,8 +2334,7 @@ int main(int argc, char* argv[]) {
 
 	if (rank == 0 )
 	{	  	  	        
-	  psiMid_output.open(strBox+"psiMid.dat",std::ios_base::app);
-					
+	  psiMid_output.open(strBox+"psiMid.dat",std::ios_base::app);					
 	  assert(psiMid_output.is_open());
 
 	  for ( i = 0; i < Nx; i++ ) {
@@ -2265,6 +2346,20 @@ int main(int argc, char* argv[]) {
 	  }}
 
 	  psiMid_output.close();	
+
+
+	  surf_output.open(strBox+"surfPsi.dat",std::ios_base::app);					
+	  assert(surf_output.is_open());
+
+	  for ( i = 0; i < Nx; i++ ) {
+	  for ( j = 0; j < Ny; j++ ) 
+	  {
+	    index = i*Ny + j;
+
+	    surf_output << surfZ[index] << "\n";
+	  }}
+
+	  surf_output.close();
 
 	  /** Inform date and time after each save psi **/
 
@@ -2282,14 +2377,13 @@ int main(int argc, char* argv[]) {
 	// Save velocity for mid x-section
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		velx_local, sx_output, strBox, "vx.dat");
+		velx_local, vx_output, strBox, "vx.dat");
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		vely_local, sy_output, strBox, "vy.dat");
+		vely_local, vy_output, strBox, "vy.dat");
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		velz_local, sz_output, strBox, "vz.dat");
-
+		velz_local, vz_output, strBox, "vz.dat");
 
 
 	// solenoidal part of the velocity
@@ -2359,6 +2453,18 @@ int main(int argc, char* argv[]) {
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
 		fz_local, fz_output, strBox, "fz.dat");
+
+
+	// Save actual force
+
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+		Sx2_local, sx_output, strBox, "sx.dat");
+
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+		Sy2_local, sy_output, strBox, "sy.dat");
+
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+		Sz2_local, sz_output, strBox, "sz.dat");
 
 	// Save divergence of the  velocity
 
