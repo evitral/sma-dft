@@ -1848,7 +1848,7 @@ int main(int argc, char* argv[]) {
       index = j*Nz + k;
       index2 = (i_local*Ny + j) * Nz + k;
 
-      psi_front[index] = Sx_local[index];	       
+      psi_front[index] = Sx_local[index2];	       
     }}
     
     if (rank == size-1){

@@ -151,7 +151,7 @@ int main(int argc, char* argv[]) {
 /* Fourier space doubles */
 
   double mq2, opSH, dotSqVq;
-  double Sx, Sy, Sz;
+  double Sx, Sy, Sz, fx, fy, fz;
 
 /* L1 related doubles + output */
 
@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/dist-rho2to1-zeta100-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/flat2-rho2to1-zeta1-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -196,7 +196,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/dist-rho2to1-zeta100-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/flat2-rho2to1-zeta1-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
+  const ptrdiff_t Nx = 64, Ny = 64, Nz = 64;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -247,7 +247,7 @@ int main(int argc, char* argv[]) {
   double rho_s = kp*Amp+rho_0;
   double rho_m = rho_s/2; // was divided by 2
   double lambda = 1; //-2*nu/3;
-  double zeta = 100;
+  double zeta = 1;
 
 /* Points per wavelength, time step */
 	
@@ -273,7 +273,7 @@ int main(int argc, char* argv[]) {
  /* Perturbed smectic layers (off for focal conic) */
 
   double Qi  = 0.125/2; //0.125/2; // Perturbation wavelength (was over 2)
-  double phi = Nw;  // Nw
+  double phi = 0;  // Nw
 
 
 
@@ -402,6 +402,7 @@ int main(int argc, char* argv[]) {
   std::vector<double> divv_local(alloc_local);	
   std::vector<double> fgrad_local(alloc_local);	
   std::vector<double> f_rho_local(alloc_local);	
+  std::vector<double> ampDgradpsi_local(alloc_local);
 
   std::vector<double> mu_local(alloc_local);	
   std::vector<double> energy_local(alloc_local);	
@@ -1481,6 +1482,14 @@ int main(int argc, char* argv[]) {
 	(dfDlapPsi_local[index] -ep*psi_local[index] 
 	 - beta*pow(psi_local[index],3) + gamma*pow(psi_local[index],5));
 
+      fx = kp*zeta*(rho_local[index]-rho_0-kp*amp_local[index])
+	/(amp_local[index]+0.001);
+
+      fx_local[index] = fx*psiGradx_local[index];
+
+      fy_local[index] = fx*psiGrady_local[index];
+
+      fz_local[index] = fx*psiGradz_local[index];
     }}}
 
     trans_local = fgrad_local;
@@ -1498,6 +1507,18 @@ int main(int argc, char* argv[]) {
     trans_local = Sz_local;
     fftw_execute(planSTz);
     Sz_local = trans_local;
+
+    trans_local = fx_local;
+    fftw_execute(planSTx);
+    fx_local = trans_local;
+
+    trans_local = fy_local;
+    fftw_execute(planSTy);
+    fy_local = trans_local;
+
+    trans_local = fz_local;
+    fftw_execute(planSTz);
+    fz_local = trans_local;
 
     // Note: planSTx moves modes +1 in x etc. 
     // Hence, for computing velx I need to move Sy_local +1 in x
@@ -1596,6 +1617,7 @@ int main(int argc, char* argv[]) {
     /** Empty out velocity containers **/
 
     std::fill(divv_local.begin(),divv_local.end(),0);
+    std::fill(ampDgradpsi_local.begin(),ampDgradpsi_local.end(),0);
 
     std::fill(vsolx_local.begin(),vsolx_local.end(),0);
     std::fill(vsoly_local.begin(),vsoly_local.end(),0);
@@ -1872,7 +1894,7 @@ int main(int argc, char* argv[]) {
       index = j*Nz + k;
       index2 = (i_local*Ny + j) * Nz + k;
 
-      psi_front[index] = Sx_local[index];	       
+      psi_front[index] = Sx_local[index2];	       
     }}
     
     if (rank == size-1){
@@ -1954,7 +1976,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
 
       // virrz_local[index] =
@@ -2013,7 +2035,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2067,7 +2089,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2121,7 +2143,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2173,7 +2195,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2195,11 +2217,15 @@ int main(int argc, char* argv[]) {
       index = j*Nz + k;
 
       psi_front[index] = virrx_local[index2];
+      psi_front2[index] = fx_local[index2];
     }}
 
     if (rank == 0){
       
       MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
+    			   MPI::DOUBLE,rank+1,0);
+
+      MPI::COMM_WORLD.Send(psi_front2.data(),Nslice,
     			   MPI::DOUBLE,rank+1,0);
 	   
     } else if (rank % 2 == 0){
@@ -2210,6 +2236,12 @@ int main(int argc, char* argv[]) {
       MPI::COMM_WORLD.Recv(psi_back.data(),Nslice,
     			   MPI::DOUBLE,rank-1,0);
 
+      MPI::COMM_WORLD.Send(psi_front2.data(),Nslice,
+    			   MPI::DOUBLE,rank+1,0);
+
+      MPI::COMM_WORLD.Recv(psi_back2.data(),Nslice,
+    			   MPI::DOUBLE,rank-1,0);
+
     } else if (rank != size-1){
 
       MPI::COMM_WORLD.Recv(psi_back.data(),Nslice,
@@ -2218,10 +2250,20 @@ int main(int argc, char* argv[]) {
       MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
     			   MPI::DOUBLE,rank+1,0);
 
+      MPI::COMM_WORLD.Recv(psi_back2.data(),Nslice,
+    			   MPI::DOUBLE,rank-1,0);
+
+      MPI::COMM_WORLD.Send(psi_front2.data(),Nslice,
+    			   MPI::DOUBLE,rank+1,0);
+
     } else {
 
       MPI::COMM_WORLD.Recv(psi_back.data(),Nslice,
     			   MPI::DOUBLE,rank-1,0);
+
+      MPI::COMM_WORLD.Recv(psi_back2.data(),Nslice,
+    			   MPI::DOUBLE,rank-1,0);
+
     }		 	 
 
     if (rank == 0 ) 
@@ -2239,26 +2281,34 @@ int main(int argc, char* argv[]) {
       if (i_local > 0){
     	index2 = ((i_local-1)*Ny + j) * Nz + k;
     	Sx = virrx_local[index2];
+    	fx = fx_local[index2];
       } else {
     	index2 = j * Nz + k;
     	Sx = psi_back[index2];
+    	fx = psi_back2[index2];
       }
 
       if (j > 0){
     	index2 = (i_local*Ny + j-1) * Nz + k;
     	Sy = virry_local[index2];
+    	fy = fy_local[index2];
       } else {
     	Sy = 0;
+	fy = 0;
       }
 
       if (k > 0){
     	Sz = virrz_local[index-1];
+    	fz = fz_local[index-1];
       } else {
     	Sz = 0;
+	fz = 0;
       }
 	     
       divv_local[index] = Vqx[i_local]*Sx+Vqy[j]*Sy+Vqz[k]*Sz;
-	
+
+      ampDgradpsi_local[index] = scale*(Vqx[i_local]*fx+Vqy[j]*fy+Vqz[k]*fz);
+
     }}}
 
 
@@ -2267,6 +2317,10 @@ int main(int argc, char* argv[]) {
     trans_local = divv_local;
     fftw_execute(iPlanCT);
     divv_local = trans_local;
+
+    trans_local = ampDgradpsi_local;
+    fftw_execute(iPlanCT);
+    ampDgradpsi_local = trans_local;
 
     // IFFT solenoidal + irrotational velocity
   
@@ -2330,8 +2384,9 @@ int main(int argc, char* argv[]) {
 
 	Nl_local[index] = 
 	  - mu_local[index] 
-	  +(kp*zeta/Amp)*
+	  +(kp*zeta/(amp_local[index]+0.001))*
 	  (rho_local[index]-rho_0-kp*amp_local[index])*psi_local[index]
+	  - ampDgradpsi_local[index]
 	  - (vsolx_local[index]+virrx_local[index])*psiGradx_local[index]
 	  - (vsoly_local[index]+virry_local[index])*psiGrady_local[index]
 	  - (vsolz_local[index]+virrz_local[index])*psiGradz_local[index];

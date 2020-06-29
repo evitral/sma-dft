@@ -219,11 +219,17 @@ int main(int argc, char* argv[]) {
   std::string swt_str;
 
   std::string strPsi = "psi";
+
+  std::string strRho = "rho";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck-rho100to1-zeta100-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck2-h32-rho2to1-zeta100-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
+
+  std::string strLoadRho = strLoad + argv[1] + std::string("-e0d") + argv[2] 
+    + std::string("/save/");
+
 
   std::ofstream psiMid_output, surf_output, velS_output, 
     curvH_output, curvK_output, vx_output, vy_output, vz_output,
@@ -231,12 +237,12 @@ int main(int argc, char* argv[]) {
     divv_output, rho_output, amp_output, info_output,
     sx_output, sy_output, sz_output,
     energyMid_output, surface_output,
-    psiXY_output, psiYZ_output, rhoXY_output, rhoYZ_output, 
+    psiXY_output, psiYZ_output, rhoXZ_output, rhoXY_output, rhoYZ_output, 
     ampXY_output, ampYZ_output;
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck-rho100to1-zeta100-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck2-h32-rho2to1-zeta100-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -250,7 +256,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 64; //256 256 64
+  const ptrdiff_t Nx = 256, Ny = 256, Nz = 32; //256 256 64
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -282,7 +288,7 @@ int main(int argc, char* argv[]) {
 
   double nu = atof(argv[1]);
   double Amp = sqrt((3*beta+sqrt(9*beta*beta+40*ep*gamma))/5);//1.34164; 
-  double rho_0 = 0.01; // 0.5
+  double rho_0 = 0.5; // 0.5
   double kp = (1-rho_0)/Amp; // 0.3755 for rho_s = 1, with rho_a = 0.5
   double rho_s = kp*Amp+rho_0;
   double rho_m = rho_s/2; // was divided by 2
@@ -661,7 +667,8 @@ int main(int argc, char* argv[]) {
       
       if (pow(i-i2,2)+pow(j-Ny/2,2) <= pow(3*Nx/16,2))
       {
-    	if ( (k > Nz/4+4) && ( k < 3*Nz/4-4) ) // Nz/4 3*Nz/4
+    	//if ( (k > Nz/4+4) && ( k < 3*Nz/4-4) ) // Nz/4 3*Nz/4
+    	if ( (k > 8) && ( k < 24) ) // 4 28
     	{
 
     	  //k2 = k + (int)round(phi*sin(Qi*i*dx));
@@ -800,6 +807,16 @@ int main(int argc, char* argv[]) {
     assert(psi_output.is_open());
     psi_output.close();
 
+    /** Create Rho output **/
+
+    strRho += std::to_string(rank);
+    strRho += ".dat";
+    strRho = strBox + strRho;
+	
+    std::ofstream rho_output(strRho.c_str());
+    assert(rho_output.is_open());
+    rho_output.close();
+
   } // End: new psi (A)
 
 	
@@ -818,6 +835,14 @@ int main(int argc, char* argv[]) {
     std::ifstream psidata(strLoad.c_str());
     assert(psidata.is_open());
 
+    strRho += std::to_string(rank);
+    strRho += ".dat";
+    strLoad = strLoad + strRho;
+    strRho  = strBox + strRho;	
+    
+    std::ifstream rhodata(strLoadRho.c_str());
+    assert(rhodata.is_open());
+
     for ( i_local = 0; i_local < local_n0; i_local++ ) 
     {
       i = i_local + local_0_start;
@@ -827,10 +852,12 @@ int main(int argc, char* argv[]) {
       {	
 	index = (i_local*Ny + j) * Nz + k;
 	psidata >> psi_local[index];
+	rhodata >> rho_local[index];
       }}
     }
 
     psidata.close();
+    rhodata.close();
 
     // This segment if for loading a single .dat
 /*	
@@ -992,9 +1019,9 @@ int main(int argc, char* argv[]) {
     assert(divv_output.is_open());
     divv_output.close();
 
-    std::ofstream rho_output(strBox+"rho.dat");
-    assert(rho_output.is_open());
-    rho_output.close();
+    std::ofstream rhoXZ_output(strBox+"rhoXZ.dat");
+    assert(rhoXZ_output.is_open());
+    rhoXZ_output.close();
 
     std::ofstream rhoXY_output(strBox+"rhoXY.dat");
     assert(rhoXY_output.is_open());
@@ -1181,7 +1208,7 @@ int main(int argc, char* argv[]) {
   *                                          *
   *******************************************/
 
-  //for(int tst=0;tst < 10;tst++) 
+ // for(int tst=0;tst < 2;tst++) 
   while (L1 > limL1)
   {
 
@@ -1212,6 +1239,7 @@ int main(int argc, char* argv[]) {
     trans_local = rho_local;
     fftw_execute(planCT);
     rhoq_local = trans_local;
+
 
     i_local = 0;
 	 
@@ -1375,6 +1403,7 @@ int main(int argc, char* argv[]) {
     trans_local = rhoDz_local;
     fftw_execute(iPlanSTz);
     rhoDz_local = trans_local;
+
 
     // Move grad A to real space
 
@@ -1612,6 +1641,7 @@ int main(int argc, char* argv[]) {
     fftw_execute(planSTz);
     fz_local = trans_local;
 
+
     // Note: planSTx moves modes +1 in x etc. 
     // Hence, for computing velx I need to move Sy_local +1 in x
     // and by -1 in y.
@@ -1847,6 +1877,7 @@ int main(int argc, char* argv[]) {
       }}
     } 	 
 
+
     // Compute velx for the rest
 
     // 1. Case j > 0, k > 0
@@ -1912,6 +1943,7 @@ int main(int argc, char* argv[]) {
 
     }}
 
+
     // 3. Case j > 0, k = 0
 
     k = 0;
@@ -1972,6 +2004,7 @@ int main(int argc, char* argv[]) {
 
     }
 
+
     // B. vely and velz 
 
     // Send i_local=local_n0-1 Sx data to back rank 
@@ -1986,7 +2019,7 @@ int main(int argc, char* argv[]) {
       index = j*Nz + k;
       index2 = (i_local*Ny + j) * Nz + k;
 
-      psi_front[index] = Sx_local[index];	       
+      psi_front[index] = Sx_local[index2];	       
     }}
     
     if (rank == size-1){
@@ -2015,6 +2048,7 @@ int main(int argc, char* argv[]) {
       MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
 			   MPI::DOUBLE,rank+1,0);
     }		 	 
+
     
     // Compute vely and velz
 
@@ -2030,16 +2064,16 @@ int main(int argc, char* argv[]) {
       Sx = psi_back[index2];
 
       if ( k !=0) {
-	index2 = ((i_local)*Ny + j+1) * Nz + k-1;
-	Sz = Sz_local[index2];
+      	index2 = ((i_local)*Ny + j+1) * Nz + k-1;
+      	Sz = Sz_local[index2];
       } else {
-	Sz = 0;
+      	Sz = 0;
       }
 	     
       dotSqVq = Vqx[i_local]*Sx + Vsy[j]*Sy_local[index] + Vqz[k]*Sz;
 
       vsoly_local[index] =
-	(CM1y[index]/nu)*(Sy_local[index] - CM2y[index]*dotSqVq);
+      	(CM1y[index]/nu)*(Sy_local[index] - CM2y[index]*dotSqVq);
 
       virry_local[index] =
       	(CM1y[index]/(lambda+2*nu))*
@@ -2055,21 +2089,20 @@ int main(int argc, char* argv[]) {
       Sx = psi_back[index2];	     	     
 
       if ( j !=0) {
-	index2 = ((i_local)*Ny + j-1) * Nz + k+1;
-	Sy = Sy_local[index2];
+      	index2 = ((i_local)*Ny + j-1) * Nz + k+1;
+      	Sy = Sy_local[index2];
       } else {
-	Sy = 0;
+      	Sy = 0;
       }
 	     
       dotSqVq = Vqx[i_local]*Sx + Vqy[j]*Sy + Vsz[k]*Sz_local[index];
 
       vsolz_local[index] =
-	(CM1z[index]/nu)*(Sz_local[index] - CM2z[index]*dotSqVq);
+      	(CM1z[index]/nu)*(Sz_local[index] - CM2z[index]*dotSqVq);
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
-
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2080,6 +2113,7 @@ int main(int argc, char* argv[]) {
     }}
 
     // Compute vely and velz for the rest
+
     
     // 1. Case j > 0, k > 0
 
@@ -2127,7 +2161,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2136,6 +2170,7 @@ int main(int argc, char* argv[]) {
       //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
 
     }}}
+
 
     // 2. Case j = 0, k > 0
 
@@ -2181,7 +2216,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2190,6 +2225,7 @@ int main(int argc, char* argv[]) {
       //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
 
     }}
+
     
     // 3. Case j > 0, k = 0
 
@@ -2235,7 +2271,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2287,7 +2323,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[j]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
 
       // virrz_local[index] =
       // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
@@ -2312,13 +2348,15 @@ int main(int argc, char* argv[]) {
       psi_front2[index] = fx_local[index2];
     }}
 
+
     if (rank == 0){
       
-      MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
-    			   MPI::DOUBLE,rank+1,0);
+    MPI::COMM_WORLD.Send(psi_front.data(),Nslice,
+			 MPI::DOUBLE,rank+1,0);
 
-      MPI::COMM_WORLD.Send(psi_front2.data(),Nslice,
-    			   MPI::DOUBLE,rank+1,0);
+    MPI::COMM_WORLD.Send(psi_front2.data(),Nslice,
+			 MPI::DOUBLE,rank+1,0);
+
 	   
     } else if (rank % 2 == 0){
 
@@ -2355,12 +2393,12 @@ int main(int argc, char* argv[]) {
 
       MPI::COMM_WORLD.Recv(psi_back2.data(),Nslice,
     			   MPI::DOUBLE,rank-1,0);
-
     }		 	 
 
     if (rank == 0 ) 
     {
       std::fill(psi_back.begin(),psi_back.end(),0);
+      std::fill(psi_back2.begin(),psi_back2.end(),0);
     }
 	 
     for ( i_local = 0; i_local < local_n0; i_local++ ) {
@@ -2439,6 +2477,7 @@ int main(int argc, char* argv[]) {
     trans_local = virrz_local;
     fftw_execute(iPlanSTz);
     virrz_local = trans_local;
+
 
     /* COMPUTE: New density */
 
@@ -2646,9 +2685,12 @@ int main(int argc, char* argv[]) {
 
 	// end surface track
 
-	// Save full psi
+	// Save full psi and rho
 			 			 	
 	std::ofstream psi_output(strPsi.c_str());
+	assert(psi_output.is_open());
+
+	std::ofstream rho_output(strRho.c_str());
 	assert(psi_output.is_open());
 
 	for ( i_local = 0; i_local < local_n0; i_local++ ){
@@ -2657,9 +2699,11 @@ int main(int argc, char* argv[]) {
 	{
 	  index  = (i_local*Ny +j)*Nz + k;
 	  psi_output << psi_local[index] << "\n";
+	  rho_output << rho_local[index] << "\n";
 	}}}
 
 	psi_output.close();
+	rho_output.close();
 
 	/** rank 0 outputs **/
 
@@ -2701,10 +2745,10 @@ int main(int argc, char* argv[]) {
 	  
 	  psiYZ_output.open(strBox+"psiYZ.dat",std::ios_base::app);
 	  rhoYZ_output.open(strBox+"rhoYZ.dat",std::ios_base::app);
-	  ampYZ_output.open(strBox+"ampYZ.dat",std::ios_base::app);
+	  //ampYZ_output.open(strBox+"ampYZ.dat",std::ios_base::app);
 	  assert(psiYZ_output.is_open());
 	  assert(rhoYZ_output.is_open());
-	  assert(ampYZ_output.is_open());
+	  //assert(ampYZ_output.is_open());
 
 	  for ( j = 0; j < Ny; j++ ) {
 	  for ( k = 0; k < Nz; k++ )
@@ -2712,14 +2756,14 @@ int main(int argc, char* argv[]) {
 	    index = (i_local*Ny + j) * Nz + k;
 
 	    psiYZ_output << psi_local[index] << "\n";
-	    rhoYZ_output << amp_local[index] << "\n";
-	    ampYZ_output << rho_local[index] << "\n";
+	    rhoYZ_output << rho_local[index] << "\n";
+	    //ampYZ_output << amp_local[index] << "\n";
 	
 	  }}
 
 	  psiYZ_output.close();
 	  rhoYZ_output.close();
-	  ampYZ_output.close();
+	  //	  ampYZ_output.close();
 	}}
       
 	//save psi
@@ -2760,23 +2804,23 @@ int main(int argc, char* argv[]) {
 	// Save rho
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		rho_local, rho_output, strBox, "rho.dat");
+		rho_local, rhoXZ_output, strBox, "rhoXZ.dat");
 
 	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
 		  psiSliceXY, rho_local, rhoXY_output, strBox, "rhoXY.dat");
 
 	// Save amplitude
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		amp_local, amp_output, strBox, "amp.dat");
+	// saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+	// 	amp_local, amp_output, strBox, "amp.dat");
 
-	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
-		  psiSliceXY, amp_local, ampXY_output, strBox, "ampXY.dat");
+	// saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+	// 	  psiSliceXY, amp_local, ampXY_output, strBox, "ampXY.dat");
 
 	// Save energy
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		energy_local, energyMid_output, strBox, "energyMid.dat");
+	// saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
+	// 	energy_local, energyMid_output, strBox, "energyMid.dat");
 
 
 	MPI::COMM_WORLD.Barrier();
