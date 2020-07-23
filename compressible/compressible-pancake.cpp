@@ -1,6 +1,6 @@
 /**********************************************************
  *                                                        *
- *                    compressible.cpp                    *
+ *            compressible-pancake.cpp                    *
  *                                                        *
  *     Author: Eduardo Vitral Freigedo Rodrigues          *
  *     Affilitation: University of Minnesota              *
@@ -222,7 +222,7 @@ int main(int argc, char* argv[]) {
 
   std::string strRho = "rho";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck2-h32-rho2to1-zeta100-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck-h64-rho2to1-zeta100-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -233,6 +233,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream psiMid_output, surf_output, velS_output, 
     curvH_output, curvK_output, vx_output, vy_output, vz_output,
+    vxXZ_output, vyXZ_output, vzXZ_output,
     vsolx_output, vsoly_output, vsolz_output, 
     divv_output, rho_output, amp_output, info_output,
     sx_output, sy_output, sz_output,
@@ -242,7 +243,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck2-h32-rho2to1-zeta100-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/pck-h64-rho2to1-zeta100-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -256,7 +257,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 32; //256 256 64
+  const ptrdiff_t Nx = 256, Ny = 256, Nz = 64; //256 256 64
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -668,7 +669,7 @@ int main(int argc, char* argv[]) {
       if (pow(i-i2,2)+pow(j-Ny/2,2) <= pow(3*Nx/16,2))
       {
     	//if ( (k > Nz/4+4) && ( k < 3*Nz/4-4) ) // Nz/4 3*Nz/4
-    	if ( (k > 8) && ( k < 24) ) // 4 28
+    	if ( (k > 24) && ( k < 40) ) // h32f: >8 and < 24    ?4 28?
     	{
 
     	  //k2 = k + (int)round(phi*sin(Qi*i*dx));
@@ -988,6 +989,16 @@ int main(int argc, char* argv[]) {
     vx_output.close();
     vy_output.close();
     vz_output.close();
+
+    std::ofstream vxXZ_output(strBox+"vxXZ.dat");
+    std::ofstream vyXZ_output(strBox+"vyXZ.dat");
+    std::ofstream vzXZ_output(strBox+"vzXZ.dat");
+    assert(vxXZ_output.is_open());
+    assert(vyXZ_output.is_open());
+    assert(vzXZ_output.is_open());
+    vxXZ_output.close();
+    vyXZ_output.close();
+    vzXZ_output.close();
 
     /** Create solenoidal vel outputs **/
 
@@ -1564,28 +1575,12 @@ int main(int argc, char* argv[]) {
 
       index =  (i_local*Ny + j)*Nz + k;
 
-      // energy_local[index] = -0.5*ep*pow(psi_local[index],2)
-      // 	+0.5*pow(dfDlapPsi_local[index],2) 
-      // 	-0.25*beta*pow(psi_local[index],4)
-      // 	+(gamma/6)*pow(psi_local[index],6);
-
       energy_local[index] =
       	0.5*pow(dfDlapPsi_local[index],2);
 
-      // divv_local[index] = 
-      // 	(0.5*zeta*(pow(rho_local[index],2)
-      // 		   -pow(rho_0+kp*amp_local[index],2))
-      // 	 +rho_local[index]*energy_local[index]);
-	  //		     +divv_local[index])
-	  // /(lambda+2*nu);
-
-
-
       fgrad_local[index] = 
-	0*rho_local[index]*energy_local[index]
-	+0.5*zeta*(pow(rho_local[index],2)-pow(rho_0+kp*amp_local[index],2));
-
-      //divv_local[index] = fgrad_local[index]/(lambda+2*nu);	
+	//rho_local[index]*energy_local[index] +
+	0.5*zeta*(pow(rho_local[index],2)-pow(rho_0+kp*amp_local[index],2));
 
       mu_local[index] = lapRhoDfDlapPsi_local[index]+ rho_local[index]*
       	(dfDlapPsi_local[index]);
@@ -1603,6 +1598,8 @@ int main(int argc, char* argv[]) {
 	(dfDlapPsi_local[index] -ep*psi_local[index] 
 	 - beta*pow(psi_local[index],3) + gamma*pow(psi_local[index],5));
 
+      energy_local[index] = rho_local[index]*energy_local[index];
+
       fx = kp*zeta*(rho_local[index]-rho_0-kp*amp_local[index])
 	/(amp_local[index]+0.001);
 
@@ -1616,6 +1613,10 @@ int main(int argc, char* argv[]) {
     trans_local = fgrad_local;
     fftw_execute(planCT);
     fgrad_local = trans_local;
+
+    trans_local = energy_local;
+    fftw_execute(planCT);
+    energy_local = trans_local;
 
     trans_local = Sx_local;
     fftw_execute(planSTx);
@@ -1753,6 +1754,18 @@ int main(int argc, char* argv[]) {
     // std::fill(fy_local.begin(),fy_local.end(),0);
     // std::fill(fz_local.begin(),fz_local.end(),0);
 
+
+    for ( i_local = 0; i_local < local_n0; i_local++ ){
+    for ( j = 0; j < Ny; j++ ) {
+    for ( k = 0; k < Nz; k++ ) 
+    {
+      index =  (i_local*Ny + j)*Nz + k;
+	   
+      fgrad_local[index] = fgrad_local[index]
+	+energy_local[index]*exp(-1.57*1.57*mq2c[index]*2);    // /2 *8  	       
+
+    }}}
+
     // Send Sz and Sy i_local=0 data to previous rank
 
     i_local = 0;
@@ -1866,7 +1879,7 @@ int main(int argc, char* argv[]) {
 	     
 	virrx_local[index] = 
 	    (CM1x[index]/(lambda+2*nu))*
-	    (Vsx[i_local]*psi_front3[index2]+0*CM2x[index]*dotSqVq);
+	  (Vsx[i_local]*psi_front3[index2]+CM2x[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1x[index]));
 
 	// virrx_local[index] = 
 	//   CM1x[index]*Vsx[i_local]*psi_front3[index2]/scale;
@@ -1901,13 +1914,7 @@ int main(int argc, char* argv[]) {
 
       virrx_local[index] =
       	(CM1x[index]/(lambda+2*nu))*
-      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+0*CM2x[index]*dotSqVq);
-
-      // virrx_local[index] =
-      // 	CM1x[index]*Vsx[i_local]*divv_local[index+Ny*Nz]/scale;
-
-
-      //fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+CM2x[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1x[index]));
 
     }}}
 
@@ -1933,13 +1940,7 @@ int main(int argc, char* argv[]) {
 
       virrx_local[index] =
       	(CM1x[index]/(lambda+2*nu))*
-      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+0*CM2x[index]*dotSqVq);
-
-      // virrx_local[index] =
-      // 	CM1x[index]*Vsx[i_local]*divv_local[index+Ny*Nz]/scale;
-
-
-      //fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+CM2x[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1x[index]));
 
     }}
 
@@ -1965,12 +1966,7 @@ int main(int argc, char* argv[]) {
 
       virrx_local[index] =
       	(CM1x[index]/(lambda+2*nu))*
-      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+0*CM2x[index]*dotSqVq);
-
-      // virrx_local[index] =
-      // 	CM1x[index]*Vsx[i_local]*divv_local[index+Ny*Nz]/scale;
-
-      //fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+CM2x[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1x[index]));
     
     }}
 
@@ -1995,12 +1991,7 @@ int main(int argc, char* argv[]) {
 
       virrx_local[index] =
       	(CM1x[index]/(lambda+2*nu))*
-      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+0*CM2x[index]*dotSqVq);
-
-      // virrx_local[index] =
-      // 	CM1x[index]*Vsx[i_local]*divv_local[index+Ny*Nz]/scale;
-
-      //fx_local[index] = scale*(Sx_local[index] - CM2x[index]*dotSqVq);
+      	(Vsx[i_local]*fgrad_local[index+Ny*Nz]+CM2x[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1x[index]));
 
     }
 
@@ -2077,13 +2068,8 @@ int main(int argc, char* argv[]) {
 
       virry_local[index] =
       	(CM1y[index]/(lambda+2*nu))*
-      	(Vsy[j]*fgrad_local[index+Nz]+0*CM2y[index]*dotSqVq);
+      	(Vsy[j]*fgrad_local[index+Nz]+CM2y[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1y[index]));
 
-      // virry_local[index] =
-      // 	CM1y[index]*Vsy[j]*divv_local[index+Nz]/scale;
-
-	   
-      //fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
 
       index2 = j*Nz+k+1;
       Sx = psi_back[index2];	     	     
@@ -2102,13 +2088,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
-
-      // virrz_local[index] =
-      // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
-
-
-      //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+CM2z[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1z[index]));
 
     }}
 
@@ -2140,11 +2120,9 @@ int main(int argc, char* argv[]) {
       	(CM1y[index]/(lambda+2*nu))*
       	(Vsy[j]*fgrad_local[index+Nz]+0*CM2y[index]*dotSqVq);
 
-      // virry_local[index] =
-      // 	CM1y[index]*Vsy[j]*divv_local[index+Nz]/scale;
-
-
-      //fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+      virry_local[index] =
+      	(CM1y[index]/(lambda+2*nu))*
+      	(Vsy[j]*fgrad_local[index+Nz]+CM2y[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1y[index]));
 
       // velz
 
@@ -2161,13 +2139,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
-
-      // virrz_local[index] =
-      // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
-
-
-      //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+CM2z[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1z[index]));
 
     }}}
 
@@ -2196,13 +2168,7 @@ int main(int argc, char* argv[]) {
 
       virry_local[index] =
       	(CM1y[index]/(lambda+2*nu))*
-      	(Vsy[j]*fgrad_local[index+Nz]+0*CM2y[index]*dotSqVq);
-
-      // virry_local[index] =
-      // 	CM1y[index]*Vsy[j]*divv_local[index+Nz]/scale;
-
-
-      //fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+      	(Vsy[j]*fgrad_local[index+Nz]+CM2y[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1y[index]));
 
       // velz , Sy = 0;
 
@@ -2216,13 +2182,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
-
-      // virrz_local[index] =
-      // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
-
-
-      //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+CM2z[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1z[index]));
 
     }}
 
@@ -2248,13 +2208,7 @@ int main(int argc, char* argv[]) {
 
       virry_local[index] =
       	(CM1y[index]/(lambda+2*nu))*
-      	(Vsy[j]*fgrad_local[index+Nz]+0*CM2y[index]*dotSqVq);
-
-      // virry_local[index] =
-      // 	CM1y[index]*Vsy[j]*divv_local[index+Nz]/scale;
-
-      
-      //fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+      	(Vsy[j]*fgrad_local[index+Nz]+CM2y[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1y[index]));
 
       // velz
 
@@ -2271,13 +2225,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
-
-      // virrz_local[index] =
-      // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
-
-
-      //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+CM2z[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1y[index]));
 
     }}
 
@@ -2303,13 +2251,7 @@ int main(int argc, char* argv[]) {
 
       virry_local[index] =
       	(CM1y[index]/(lambda+2*nu))*
-      	(Vsy[j]*fgrad_local[index+Nz]+0*CM2y[index]*dotSqVq);
-
-      // virry_local[index] =
-      // 	CM1y[index]*Vsy[j]*divv_local[index+Nz]/scale;
-
-
-      //fy_local[index] = scale*(Sy_local[index] - CM2y[index]*dotSqVq);
+      	(Vsy[j]*fgrad_local[index+Nz]+CM2y[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1y[index]));
 
       // velz, Sy = 0;	   
 
@@ -2323,13 +2265,7 @@ int main(int argc, char* argv[]) {
 
       virrz_local[index] =
       	(CM1z[index]/(lambda+2*nu))*
-      	(Vsz[k]*fgrad_local[index+1]+0*CM2z[index]*dotSqVq);
-
-      // virrz_local[index] =
-      // 	CM1z[index]*Vsz[j]*divv_local[index+1]/scale;
-
-   
-      //fz_local[index] = scale*(Sz_local[index] - CM2z[index]*dotSqVq);
+      	(Vsz[k]*fgrad_local[index+1]+CM2z[index]*dotSqVq*exp(-1.57*1.57*2*scale/CM1z[index]));
 
     }
 
@@ -2595,6 +2531,11 @@ int main(int argc, char* argv[]) {
 
 	rho_sum_local = rho_sum_local + rho_local[index];
 
+	energy_local[index] = -0.5*ep*pow(psi_local[index],2)
+	  +0.5*pow(dfDlapPsi_local[index],2) 
+	  -0.25*beta*pow(psi_local[index],4)
+	  +(gamma/6)*pow(psi_local[index],6);
+
 	energy_sum = energy_sum + rho_local[index]*energy_local[index]
 	  +0.5*zeta*pow(rho_local[index]-rho_0-kp*amp_local[index],2);
 
@@ -2774,32 +2715,54 @@ int main(int argc, char* argv[]) {
 	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
 		  psiSliceXY, psi_local, psiXY_output, strBox, "psiXY.dat");
       
+
+	for ( i_local = 0; i_local < local_n0; i_local++ ) {
+	for ( j = 0; j < Ny; j++ ) {
+	for ( k = 0; k < Nz; k++ )
+	{
+	  index = (i_local*Ny + j) * Nz + k;
+	
+	  Sx_local[index] = vsolx_local[index]+virrx_local[index];	   
+	  Sy_local[index] = vsoly_local[index]+virry_local[index];	   
+	  Sz_local[index] = vsolz_local[index]+virrz_local[index];	   
+	}}}
+
 	// Save velocity for mid x-section
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		Sx_local, vx_output, strBox, "vx.dat");
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, 
+		  psiSlice, Sx_local, vxXZ_output, strBox, "vxXZ.dat");
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		Sy_local, vy_output, strBox, "vy.dat");
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, 
+		  psiSlice, Sy_local, vyXZ_output, strBox, "vyXZ.dat");
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		Sz_local, vz_output, strBox, "vz.dat");
+	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, 
+		  psiSlice, Sz_local, vzXZ_output, strBox, "vzXZ.dat");
+
+
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, Sx_local, vx_output, strBox, "vx.dat");
+
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, Sy_local, vy_output, strBox, "vy.dat");
+
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, Sz_local, vz_output, strBox, "vz.dat");
 
 	// Save solenoidal velocity MUUUUUU
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		vsolx_local, vsolx_output, strBox, "vsolx.dat");
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, vsolx_local, vsolx_output, strBox, "vsolx.dat");
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		mu_local, vsoly_output, strBox, "vsoly.dat");
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, mu_local, vsoly_output, strBox, "vsoly.dat");
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		vsolz_local, vsolz_output, strBox, "vsolz.dat");
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, vsolz_local, vsolz_output, strBox, "vsolz.dat");
 
 	// Save divv
 
-	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		divv_local, divv_output, strBox, "divv.dat");
+	saveMidXY(Nx, Ny, Nz, local_n0, rank, alloc_surf, psiSliceXY_local, 
+		  psiSliceXY, divv_local, divv_output, strBox, "divv.dat");
 
 	// Save rho
 
