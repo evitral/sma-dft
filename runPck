@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH -J flat100to1e0d5
-#SBATCH -o flat100to1e0d5.%j.out
-#SBATCH --partition=shared
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=16
+#SBATCH -J pe0d2z100h64nu1
+#SBATCH -o pe0d2z100h64nu1.%j.out
+#SBATCH --partition=compute
+#SBATCH --nodes=3
+#SBATCH --ntasks-per-node=24
 #SBATCH --mem=80G
 #SBATCH --export=ALL
-#SBATCH -t 24:00:00
+#SBATCH -t 48:00:00
 #SBATCH -A umn120
 
 echo "-------------------------------------------------------------------------"
@@ -26,5 +26,5 @@ echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
 export BUILD=/opt/fftw/3.3.8/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -I $BUILD/include -O3 -o compressible/compressible compressible/compressible.cpp -L $BUILD/lib $LIBS
-ibrun -np 16 ./compressible/compressible 1 500 140 0 > /oasis/scratch/comet/evitral/temp_project/compressible/test.out
+mpicxx -I $BUILD/include -O3 -o compressible/compressible-pancake compressible/compressible-pancake.cpp -L $BUILD/lib $LIBS
+ibrun -np 64 ./compressible/compressible-pancake 1 200 140 0 > /oasis/scratch/comet/evitral/temp_project/compressible/pancake-h64.out

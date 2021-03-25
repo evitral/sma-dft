@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
 
   std::string strPsi = "psi";
 	
-  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/fc-r220-rho2to1-zeta1-nw8-nu";
+  std::string strLoad = "/oasis/scratch/comet/evitral/temp_project/compressible/test/flatL-rho100to1-zeta1-nw8-nu";
 	
   strLoad += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/save/");
@@ -196,7 +196,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/fc-r220-rho2to1-zeta1-nw8-nu";
+  std::string strBox = "/oasis/scratch/comet/evitral/temp_project/compressible/test/flatL-rho100to1-zeta1-nw8-nu";
 
   strBox += argv[1] + std::string("-e0d") + argv[2] 
     + std::string("/");
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
 	
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
+  const ptrdiff_t Nx = 64, Ny = 16, Nz = 256;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -220,7 +220,8 @@ int main(int argc, char* argv[]) {
 
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
-  const double mid = Ny/2; 
+  const double mid = Ny/2;
+  double mid_translate = 0;
   const double aE = atof(argv[3]);   // focal conic dimensions
   const double bE = atof(argv[3]);   // same to maintain layer spacing
   double aE2, bE2; // 2nd focal conic
@@ -242,7 +243,8 @@ int main(int argc, char* argv[]) {
 
   double nu = atof(argv[1]);
   double Amp = sqrt((3*beta+sqrt(9*beta*beta+40*ep*gamma))/5);//1.34164; 
-  double rho_0 = 0.5; // 0.5
+  double rho_0 = 0.01; // 0.5
+  double rho_1;
   double kp = (1-rho_0)/Amp; // 0.3755 for rho_s = 1, with rho_a = 0.5
   double rho_s = kp*Amp+rho_0;
   double rho_m = rho_s/2; // was divided by 2
@@ -590,22 +592,22 @@ int main(int argc, char* argv[]) {
 
     /** Perturbed smectic **/
 
-    // for ( i_local = 0; i_local < local_n0; i_local++ ) {
-    // for ( j = 0; j < Ny; j++ ) {
-    // for ( k = 0; k < Nz; k++ ) 
-    // {	
+    for ( i_local = 0; i_local < local_n0; i_local++ ) {
+    for ( j = 0; j < Ny; j++ ) {
+    for ( k = 0; k < Nz; k++ ) 
+    {	
 
-    //   if ( (k > Nx/4) && ( k < 3*Nx/4))
-    //   {
-    // 	i = i_local + local_0_start;
+      if ( (k > Nz/2-8) && ( k < Nz/2+8))
+      {
+    	i = i_local + local_0_start;
 
-    // 	k2 = k + (int)round(phi*sin(Qi*i*dx));
+    	k2 = k + (int)round(phi*sin(Qi*i*dx));
 
-    // 	index = (i_local*Ny + j) * Nz + k2;
+    	index = (i_local*Ny + j) * Nz + k2;
 
-    // 	psi_local[index] = Amp*cos(q0*k*dz);
-    //   }
-    // }}}
+    	psi_local[index] = Amp*cos(q0*k*dz);
+      }
+    }}}
 
     /** Multiple focal conics **/
 
@@ -621,16 +623,19 @@ int main(int argc, char* argv[]) {
     // 	  // 1024 x 1024 x 512                                            
     // 	  // if ( i >= Nx/2 & j >= Ny/2) {i2 = i - Nx/2; j2 = j - Ny/2;}  
     // 	  // 1024 x 512 x 512                                             
-    // 	  if (i >= Nx/2) { i2 = i - Nx/2; j2 = j; aE2 = aE + gap; bE2 = bE + gap; }
+    // 	  if (i >= Nx/2) { i2 = i - Nx/2; j2 = j; aE2 = aE + gap; bE2 = bE + gap; 
+    // 	    mid_translate = 0;}
 	      
-    // 	  else { i2 = i; j2 = j; aE2 = aE; bE2 = bE; }
+    // 	  else { i2 = i; j2 = j; aE2 = aE; bE2 = bE; 
+    // 	    mid_translate = -0;}
 
-    // 	  //aE2 = aE*(1.2-0.4*static_cast<double>(i)/512);
-    // 	  bE2 = bE*(1.2-0.4*static_cast<double>(i)/512);
+    // 	  //aE2 = aE*(0.8+0.4*static_cast<double>(i)/512);
+    // 	  //bE2 = bE*(0.8+0.4*static_cast<double>(i)/512); //only this one 1.2-0.4
+    // 	  //bE2 = bE;
 
     // 	  if ( k <  bE2 + 1 ) // 18 110 // 24 232  // 62 450               
     // 	  {
-    // 	    xs = i2 - mid;
+    // 	    xs = i2 - mid + mid_translate;
     // 	    ys = j2 - mid;
     // 	    // zs = k + mid*3/4;                                    
     // 	    zs = k;
@@ -645,7 +650,9 @@ int main(int argc, char* argv[]) {
     // 	      }
     // 	      else
     // 	      {
-    // 		psi_local[index] = Amp*cos(((-0.4*q0/512)*static_cast<double>(i)+1.2*q0)*dz*
+    // 		//psi_local[index] = Amp*cos(((-0.4*q0/512)*static_cast<double>(i)+1.2*q0)*dz*
+    // 		// 			   sqrt(pow((bE2/aE2)*(ds-mid),2)+zs*zs));
+    // 		psi_local[index] = Amp*cos(q0*dz*
     // 					   sqrt(pow((bE2/aE2)*(ds-mid),2)+zs*zs));
     // 	      }
     // 	    }
@@ -653,7 +660,8 @@ int main(int argc, char* argv[]) {
     // 	    {
     // 	      if (abs(zs) < bE2)
     // 	      {
-    // 		psi_local[index] = Amp*cos(((-0.4*q0/512)*static_cast<double>(i)+1.2*q0)*zs*dz);
+    // 		//psi_local[index] = Amp*cos(((-0.4*q0/512)*static_cast<double>(i)+1.2*q0)*zs*dz); 
+    // 		psi_local[index] = Amp*cos(q0*zs*dz);
     // 	      }
     // 	      else
     // 	      {
@@ -670,53 +678,53 @@ int main(int argc, char* argv[]) {
 
     /** Single focal conic **/
 
-    for ( i_local = 0; i_local < local_n0; i_local++ ) 
-    {
-      i = i_local + local_0_start;
+    // for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    // {
+    //   i = i_local + local_0_start;
 
-      for ( j = 0; j < Ny; j++ ) {
-      for ( k = 0; k < Nz; k++ ) 
-      {	
-        index = (i_local*Ny + j) * Nz + k;
-        if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-        {		
-          xs = i - mid;
-          ys = j - mid;
-          // zs = k + mid*3/4; 
-          zs = k;
-          // zs = k-mid for hyperboloid in the middle
-          // zs = k for hyperboloid in the botton
-          ds = sqrt(xs*xs+ys*ys);
-          if (ds < mid)
-          {
-    	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-    	{
-    	  psi_local[index] = 0.0;
-    	}
-    	else
-    	{
-    	  psi_local[index] = Amp*cos(q0*dz*
-    				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-    	}
-          }
-          else
-          {
-    	if (abs(zs) < bE)
-    	{
-    	  psi_local[index] = Amp*cos(q0*zs*dz);
-    	}
-    	else
-    	{
-    	  psi_local[index] = 0.0;
-    	}
-          }		 
-        }
-        else
-          {
-    	psi_local[index] = 0.0;
-          }
-      }}
-    } // close IC assign
+    //   for ( j = 0; j < Ny; j++ ) {
+    //   for ( k = 0; k < Nz; k++ ) 
+    //   {	
+    //     index = (i_local*Ny + j) * Nz + k;
+    //     if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
+    //     {		
+    //       xs = i - mid;
+    //       ys = j - mid;
+    //       // zs = k + mid*3/4; 
+    //       zs = k;
+    //       // zs = k-mid for hyperboloid in the middle
+    //       // zs = k for hyperboloid in the botton
+    //       ds = sqrt(xs*xs+ys*ys);
+    //       if (ds < mid)
+    //       {
+    // 	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+    // 	{
+    // 	  psi_local[index] = 0.0;
+    // 	}
+    // 	else
+    // 	{
+    // 	  psi_local[index] = Amp*cos(q0*dz*
+    // 				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+    // 	}
+    //       }
+    //       else
+    //       {
+    // 	if (abs(zs) < bE)
+    // 	{
+    // 	  psi_local[index] = Amp*cos(q0*zs*dz);
+    // 	}
+    // 	else
+    // 	{
+    // 	  psi_local[index] = 0.0;
+    // 	}
+    //       }		 
+    //     }
+    //     else
+    //       {
+    // 	psi_local[index] = 0.0;
+    //       }
+    //   }}
+    //} // close IC assign
 
 
 /* Output IC to file  */
@@ -1424,8 +1432,10 @@ int main(int argc, char* argv[]) {
       {
 	index =  (i_local*Ny + j)*Nz + k;
 
-	rho_local[index] = rho_0+kp*amp_local[index];
+    	i = i_local + local_0_start;
 
+	rho_1 = rho_0; //+ (static_cast<double>(nLoop)/static_cast<double>(divvSwitch))*(1-static_cast<double>(i)/512)*0.5; //-0.4;
+	rho_local[index] = rho_1+((1-rho_1)/Amp)*amp_local[index];
 	lapRhoDfDlapPsi_local[index] = 
 	  rho_local[index]*lapRhoDfDlapPsi_local[index];
 
@@ -2535,7 +2545,7 @@ int main(int argc, char* argv[]) {
 
 	    index = (i_local*Ny + j) * Nz + k;
 
-	    if ( rho_local[index] > rho_0 + 0.2 )
+	    if ( rho_local[index] > rho_s - 0.15 )
 	    {
 	      surfZ_local[index2] = k;
 	      break;
@@ -2663,13 +2673,13 @@ int main(int argc, char* argv[]) {
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
 		Sz_local, vz_output, strBox, "vz.dat");
 
-	// Save solenoidal velocity MUUUUUU
+	// Save solenoidal velocity
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
 		vsolx_local, vsolx_output, strBox, "vsolx.dat");
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
-		mu_local, vsoly_output, strBox, "vsoly.dat");
+		vsoly_local, vsoly_output, strBox, "vsoly.dat");
 
 	saveMid(Nx, Ny, Nz, local_n0, rank, alloc_slice, psiSlice_local, psiSlice,
 		vsolz_local, vsolz_output, strBox, "vsolz.dat");
