@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH -J qrho10e0d68nw8
+#SBATCH -o qrho10e0d68nw8.%j.out
+#SBATCH --partition=shared
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --mem=80G
+#SBATCH --export=ALL
+#SBATCH -t 48:00:00
+#SBATCH -A umn120
+
+echo "-------------------------------------------------------------------------"
+echo "Environment for building and running applications with Intel compiler and MPI"
+
+# Reset modules to base state
+#module purge
+
+#Load modules for Intel & MPI
+module load gnutools
+module load intel/2016.3.210 mvapich2_ib
+module load fftw
+#module list
+#cd /home/evitral/sma-dft/quasi/
+
+echo " "
+echo "-------------------------------------------------------------------------"
+echo "Application with double precision MPI parallel FFTW 3.3"
+export BUILD=/opt/fftw/3.3.4/intel/mvapich2_ib
+export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
+mpicxx -I $BUILD/include -O3 -o quasi/quasi-drho quasi/quasi-drho.cpp -L $BUILD/lib $LIBS
+ibrun -np 16 ./quasi/quasi-drho 10 68 340 0 > /oasis/scratch/comet/evitral/temp_project/quasi_flat/resultDrhoNw8-68.out
