@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name="136c"
-#SBATCH --output="136c.%j.out"
+#SBATCH --job-name="124p4"
+#SBATCH --output="124p4.%j.out"
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
@@ -28,5 +28,5 @@ echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
 #export BUILD=/opt/fftw/3.3.8/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -O3 -o compressible/compressible compressible/compressible.cpp $LIBS
-srun -n 16 ./compressible/compressible 1000 800 136 0 > /expanse/lustre/projects/umn120/evitral/substrate/channel-136c.out
+mpicxx -O3 -o compressible/compressible-layer compressible/compressible-layer.cpp $LIBS
+srun -n 16 ./compressible/compressible-layer 1000 800 124 0 > /expanse/lustre/projects/umn120/evitral/substrate/channel-124p4.out

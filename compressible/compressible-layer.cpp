@@ -1,13 +1,13 @@
 
 /**********************************************************
  *                                                        *
- *                    compressible.cpp                    *
+ *                    compressible-layer.cpp              *
  *                                                        *
  *    Author: Eduardo Vitral Freigedo Rodrigues           *
  *    Affilitation:                                       *
  *    University of Minnesota, Aerospace Eng & Mechanics  *
  *    University of Nevada Reno, Mechanical Eng           *
- *    Last mod: 08/07/2021                                *
+ *    Last mod: 01/22/2022                                *
  *                                                        *
  *    Parallel FFTW implementation of a phase field       *
  *    model for a 3D smectic-isotropic system of          *
@@ -29,6 +29,9 @@
  *    Boundary conditions: no flux bcs                    *
  *    i)  Order parameter and density: Neumann (DCT)      *
  *    ii) Velocity: no-slip (DST)                         *
+ *                                                        *
+ *     Layer: control parameter boudary layer close to    *
+ *     channel's borders                                  *
  *                                                        *
  **********************************************************/
 
@@ -198,9 +201,9 @@ int main(int argc, char* argv[]) {
 
   std::string strLoad2;  
   
-  std::string strLoad = "/expanse/lustre/projects/umn120/evitral/substrate/channel6/load/";
+  std::string strLoad = "/expanse/lustre/projects/umn120/evitral/substrate/channel-layer2-fc120-seed/save1/";
 
-  std::string strSave = "/expanse/lustre/projects/umn120/evitral/compressible/rho10to1/fc136b/save/";
+  std::string strSave = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty4-fc124/save/";
 	
   //  strLoad += argv[1] + std::string("-e0d") + argv[2] 
   //  + std::string("/save/");
@@ -214,7 +217,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/expanse/lustre/projects/umn120/evitral/compressible/rho10to1/fc136b/";
+  std::string strBox = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty4-fc124/";
 
   //  strBox += argv[1] + std::string("-e0d") + argv[2] 
   //  + std::string("/");
@@ -226,10 +229,11 @@ int main(int argc, char* argv[]) {
   const int stepSave = 10; // 4 or 10
   const int divvSwitch = 200; // 100 or 200
   const int rhoUP = 16; // moves rho up so that interface doesnt get stuck when sintering
+  const int xPert = 24; // x perturbation when loading IC, also epsilon
   
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 256, Ny = 256, Nz = 256;
+  const ptrdiff_t Nx = 256, Ny = 128, Nz = 256;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -262,13 +266,13 @@ int main(int argc, char* argv[]) {
 
   double nu = atof(argv[1]);
   double Amp = sqrt((3*beta+sqrt(9*beta*beta+40*ep*gamma))/5);//1.34164; 
-  double rho_0 = 0.1; // 0.01
+  double rho_0 = 1.0; // 0.01
   double rho_1;
   double kp = (1-rho_0)/Amp; // 0.3755 for rho_s = 1, with rho_a = 0.5
   double rho_s = kp*Amp+rho_0;
   double rho_m = rho_s/2; // was divided by 2
   double lambda = nu; //-2*nu/3;
-  double zeta = 0.001;
+  double zeta = 0.001; // 0.001
 
 /* Points per wavelength, time step */
 	
@@ -367,11 +371,13 @@ int main(int argc, char* argv[]) {
   std::vector<double> Nl_local(alloc_local);
   std::vector<double> Nl_old_local(alloc_local);
 	
-/* Local data containers (wall potential) */
+/* Local data containers (wall potential,boundary layer) */
 	
 //  std::vector<double> wall(alloc_local);
 //  std::vector<double> substrate(alloc_local);
 
+  std::vector <double> ep_layer_local(alloc_local);
+  
 /* Local data containers (advection) */
 
   std::vector <double> Vsx(local_n0), Vsy(Ny), Vsz(Nz);
@@ -590,8 +596,58 @@ int main(int argc, char* argv[]) {
  *                                          *
  *******************************************/
 
-/* A. Initial condition - New */
 
+/* Set thermal boundary layer*/
+
+    std::fill(ep_layer_local.begin(),ep_layer_local.end(),0);      
+  
+    for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    {
+      i = i_local + local_0_start;
+	  
+      for ( j = 0; j < Ny; j++ ) {
+      for ( k = 0; k < Nz; k++ ) 
+      {	
+	index = (i_local*Ny + j) * Nz + k;
+
+	// if (j < Nw) {
+	//   ep_layer_local[index] = (-ep-0.675)+(ep+0.675)*sin(M_PI*j/(2*Nw)); //-0.675
+	// }
+	// if (j > Ny-1-Nw){
+	//   ep_layer_local[index] = (-ep-0.675)+(ep+0.675)*sin(M_PI*(Ny-1-j)/(2*Nw)); // -0.675
+	// }
+
+	// if (k < Nw) {
+	//   ep_layer_local[index] = (-ep-0.5)+(ep+0.5)*sin(M_PI*k/(2*Nw));	  
+	// } // (-ep + 1)
+	
+	
+	// if (k < Nw*0) {
+	//   ep_layer_local[index] = ep_layer_local[index]+(-ep-0.6)+(ep+0.6)*sin(M_PI*k/(2*Nw*2)); //-0.675
+	// }
+
+	if (k < xPert) {
+	  //ep_layer_local[index] = (0.4*pow((j-Ny/2+0.5)/(Ny/2),2)+0.6)*cos(M_PI*k/(2*xPert));
+	  ep_layer_local[index] = 0.6*cos(M_PI*k/(2*xPert));	  
+	} // (-ep + 1)
+	
+       // if (k < xPert) {
+       // 	  ep_layer_local[index] = (-ep-0.15)*abs(((j-Ny/2+0.5)/(Ny/2)));	  
+       // 	} // (-ep + 1)
+
+       // if (k < xPert) {
+       // 	 ep_layer_local[index] = -(ep+0.675)+0.25*((j-Ny/2+0.5)/(Ny/2));	  
+       // 	} // (-ep + 1)
+	
+	// ep_layer_local[index] = ep_layer_local[index]+(-ep-0.4)*pow((j-Ny/2+0.5)/(Ny/2),8); 
+	// -0.675 when |ep| > 0.675
+	
+      }}
+    }
+
+    
+/* A. Initial condition - New */    
+  
   if ( load != 1 )
   {
 
@@ -608,7 +664,7 @@ int main(int argc, char* argv[]) {
 ********************************************/
 
     std::fill(psi_local.begin(),psi_local.end(),0);
-    std::fill(rho_local.begin(),rho_local.end(),0);  
+    std::fill(rho_local.begin(),rho_local.end(),0);
 
     /** Perturbed smectic **/
 
@@ -710,7 +766,14 @@ int main(int argc, char* argv[]) {
         {		
           xs = i - mid;
 	  //ys = j*(2-k/128) - mid; // compressed channel
-          ys = j - mid; // modified for channel
+	  if (k < Nw*2) {
+            //ys = (j+64 - mid)/(2-k/(Nw)); // modified for channel, stretched
+	    //	    double stretch = 7*(1-(double)k/Nw)*abs(((double)i-Nx/2)/(Nx/2))+1;
+	    double stretch = 0*(1-(double)k/(Nw*2))+1;	    
+	    ys = (j+64 - mid)/stretch;
+	  } else {
+	    ys = j+64 - mid;
+	  }
           // zs = k + mid*3/4; 
           zs = k;
           // zs = k-mid for hyperboloid in the middle
@@ -745,6 +808,24 @@ int main(int argc, char* argv[]) {
     	psi_local[index] = 0.0;
           }
       }}
+
+      // Add perturbation or change IC
+
+      //for ( i_local = 0; i_local < local_n0; i_local++ ) 
+      //{
+      //	i = i_local + local_0_start;
+      //
+      // 	for ( j = 0; j < Ny; j++ ) {
+      // 	for ( k = 0; k < xPert; k++ ) 
+      // 	{	
+      // 	  index = (i_local*Ny + j) * Nz + k;
+      //
+      // 	  psi_local[index] = psi_local[index]+Amp*cos(q0*i*dx);
+      //  
+      //   }}
+      //	}
+      // }
+    
     } // close IC assign
 
 
@@ -802,6 +883,25 @@ int main(int argc, char* argv[]) {
 
     psidata.close();
 
+    // add perturbation
+    
+    for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    {
+      i = i_local + local_0_start;
+
+      if (i > 119 && i < 136){
+      for ( j = 56; j < 72; j++ ) {
+      for ( k = 0; k < xPert; k++ ) 
+      {	
+    	index = (i_local*Ny + j) * Nz + k;
+
+    	psi_local[index] = psi_local[index]+Amp*cos(q0*i*dx);
+	  
+      }}
+      }
+    }
+
+    
 
     /** Create Rho output **/
     
@@ -1172,6 +1272,7 @@ int main(int argc, char* argv[]) {
     countL1++;
     nLoop++;
 
+    
     /** Empty out containers **/
 
     std::fill(psiGradx_local.begin(),psiGradx_local.end(),0);
@@ -2497,7 +2598,8 @@ int main(int argc, char* argv[]) {
 	  - ampDgradpsi_local[index]
 	  - (vsolx_local[index]+virrx_local[index])*psiGradx_local[index]
 	  - (vsoly_local[index]+virry_local[index])*psiGrady_local[index]
-	  - (vsolz_local[index]+virrz_local[index])*psiGradz_local[index];
+	  - (vsolz_local[index]+virrz_local[index])*psiGradz_local[index]
+	  + rho_local[index]*ep_layer_local[index]*psi_local[index]; // boundary layer
 
 	// if (nLoop > divvSwitch + 1){
 
@@ -2508,6 +2610,41 @@ int main(int argc, char* argv[]) {
 	//  f low rho_a
 	// }
       }}}
+
+
+    
+    // DELETE --------------------------
+    // Punish grady at the bottom
+    
+    for ( i_local = 0; i_local < local_n0; i_local++ ){
+    for ( j = 0; j < Ny; j++ ) {
+    for ( k = 0; k < Nz; k++ ) 
+    {
+      index =  (i_local*Ny + j)*Nz + k;
+	   
+      trans_local[index] = -pow(Vsy[j],2)*psiq_local[index];  	       
+
+    }}}
+
+    fftw_execute(iPlanCT);
+ 
+    for ( i_local = 0; i_local < local_n0; i_local++ ){
+    for ( j = 0; j < Ny; j++ ) {
+    for ( k = 0; k < xPert; k++ ) 
+    {
+      index =  (i_local*Ny + j)*Nz + k;
+	   
+      // Nl_local[index] = Nl_local[index]+2.0*trans_local[index]*cos(M_PI*k/(2*xPert));
+
+      Nl_local[index] = Nl_local[index]+(2.0*pow((j-Ny/2+0.5)/(Ny/2),2)+2.0)*trans_local[index]*cos(M_PI*k/(2*xPert));
+      
+    }}}
+    //------------------------------------
+
+
+
+    
+
 
     
     /* Obtain current Nq_local */
@@ -2904,4 +3041,3 @@ int main(int argc, char* argv[]) {
   MPI::Finalize();
 
 } // END
-    
