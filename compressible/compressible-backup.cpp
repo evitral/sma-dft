@@ -199,9 +199,9 @@ int main(int argc, char* argv[]) {
 
   std::string strLoad2;  
   
-  std::string strLoad = "/expanse/lustre/projects/umn120/evitral/compressible/rho100to1/stretch-6d2-5d2-fc126-e0d85/load/";
+  std::string strLoad = "/expanse/lustre/projects/umn120/evitral/compressible/rho100to1/stretch-6d2-5d2-fc126-e0d87/load/";
 
-  std::string strSave = "/expanse/lustre/projects/umn120/evitral/compressible/rho100to1/stretch-6d2-5d2-fc126-e0d85/save/";
+  std::string strSave = "/expanse/lustre/projects/umn120/evitral/compressible/rho100to1/stretch-6d2-5d2-fc126-e0d87/save/";
 	
   //  strLoad += argv[1] + std::string("-e0d") + argv[2] 
   //  + std::string("/save/");
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/expanse/lustre/projects/umn120/evitral/compressible/rho100to1/stretch-6d2-5d2-fc126-e0d85/";
+  std::string strBox = "/expanse/lustre/projects/umn120/evitral/compressible/rho100to1/stretch-6d2-5d2-fc126-e0d87/";
   
   //  strBox += argv[1] + std::string("-e0d") + argv[2] 
   //  + std::string("/");
@@ -230,7 +230,7 @@ int main(int argc, char* argv[]) {
   
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
-  const ptrdiff_t Nx = 578, Ny = 484, Nz = 130;
+  const ptrdiff_t Nx = 308, Ny = 256, Nz = 256;
   const ptrdiff_t NG = Nx*Ny*Nz;
   const ptrdiff_t Nslice = Ny*Nz;
 	
@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
 
 /* Constants and variables for morphologies (Nx = Ny = Nz) */
 
-  const double mid = Nx/2;
+  const double mid = Ny/2;
   double mid_translate = 0;
   const double aE = atof(argv[3]);   // focal conic dimensions
   const double bE = atof(argv[3]);   // same to maintain layer spacing
@@ -699,54 +699,54 @@ int main(int argc, char* argv[]) {
 
     /** Single focal conic **/
 
-    // for ( i_local = 0; i_local < local_n0; i_local++ ) 
-    // {
-    //   i = i_local + local_0_start;
+    for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    {
+      i = i_local + local_0_start;
 
-    //   for ( j = 0; j < Ny; j++ ) {
-    //   for ( k = 0; k < Nz; k++ ) 
-    //   {	
-    //     index = (i_local*Ny + j) * Nz + k;
-    //     if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-    //     {		
-    //       xs = i - mid; // i - mid
-    // 	  //ys = j*(2-k/128) - mid; // compressed channel
-    //       ys = j - mid; // j - mid
-    //       // zs = k + mid*3/4; 
-    //       zs = k;
-    //       // zs = k-mid for hyperboloid in the middle
-    //       // zs = k for hyperboloid in the botton
-    //       ds = sqrt(xs*xs+ys*ys);
-    //       if (ds < mid)
-    //       {
-    // 	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
-    // 	{
-    // 	  psi_local[index] = 0.0;
-    // 	}
-    // 	else
-    // 	{
-    // 	  psi_local[index] = Amp*cos(q0*dz*
-    // 				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
-    // 	}
-    //       }
-    //       else
-    //       {
-    // 	if (abs(zs) < bE)
-    // 	{
-    // 	  psi_local[index] = Amp*cos(q0*zs*dz);
-    // 	}
-    // 	else
-    // 	{
-    // 	  psi_local[index] = 0.0;
-    // 	}
-    //       }		 
-    //     }
-    //     else
-    //       {
-    // 	psi_local[index] = 0.0;
-    //       }
-    //   }}
-    // } // close IC assign
+      for ( j = 0; j < Ny; j++ ) {
+      for ( k = 0; k < Nz; k++ ) 
+      {	
+        index = (i_local*Ny + j) * Nz + k;
+        if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
+        {
+          xs = (1.0/1.2)*i - mid; // i - mid
+    	  //ys = j*(2-k/128) - mid; // compressed channel
+          ys = j - mid; // j - mid
+          // zs = k + mid*3/4; 
+          zs = k;
+          // zs = k-mid for hyperboloid in the middle
+          // zs = k for hyperboloid in the botton
+          ds = sqrt(xs*xs+ys*ys);
+          if (ds < mid)
+          {
+    	if (sqrt(pow((ds-mid)/aE,2)+pow(zs/bE,2)) > 1)
+    	{
+    	  psi_local[index] = 0.0;
+    	}
+    	else
+    	{
+    	  psi_local[index] = Amp*cos(q0*dz*
+    				     sqrt(pow((bE/aE)*(ds-mid),2)+zs*zs));
+    	}
+          }
+          else
+          {
+    	if (abs(zs) < bE)
+    	{
+    	  psi_local[index] = Amp*cos(q0*zs*dz);
+    	}
+    	else
+    	{
+    	  psi_local[index] = 0.0;
+    	}
+          }		 
+        }
+        else
+          {
+    	psi_local[index] = 0.0;
+          }
+      }}
+    } // close IC assign
 
 
 
@@ -802,44 +802,44 @@ int main(int argc, char* argv[]) {
 
     // Use Nx = 256, Ny = 256, Nz = 256
     
-    for ( i_local = 0; i_local < local_n0; i_local++ ) 
-    {
-      i = i_local + local_0_start;
+    // for ( i_local = 0; i_local < local_n0; i_local++ ) 
+    // {
+    //   i = i_local + local_0_start;
 
-      for ( j = 0; j < Ny; j++ ) {
-      for ( k = 0; k < Nz; k++ ) 
-      {	
-        index = (i_local*Ny + j) * Nz + k;
-        if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
-        {
-	  zs = k;
-	  // if (abs(zs) < bE) {
-	  //  psi_local[index] = Amp*cos(q0*zs*dz); }
-	  //else {
-	  //  psi_local[index] = 0.0; }
+    //   for ( j = 0; j < Ny; j++ ) {
+    //   for ( k = 0; k < Nz; k++ ) 
+    //   {	
+    //     index = (i_local*Ny + j) * Nz + k;
+    //     if ( k <  bE + 1 ) // 18 110 // 24 232  // 62 450
+    //     {
+    // 	  zs = k;
+    // 	  // if (abs(zs) < bE) {
+    // 	  //  psi_local[index] = Amp*cos(q0*zs*dz); }
+    // 	  //else {
+    // 	  //  psi_local[index] = 0.0; }
 
-	  xs = (5.2/6.2)*i-242; //256
-	  ys = j-242; //256
-	  ds = sqrt(xs*xs+ys*ys);	    
+    // 	  xs = (3.4/7.0)*i-158; //256
+    // 	  ys = j-158; //256
+    // 	  ds = sqrt(xs*xs+ys*ys);	    
 
-	  // Regular R = 128 FC
-	  if (sqrt(pow((ds-121)/aE,2)+pow(zs/bE,2)) > 1) {   // - 128
-	    psi_local[index] = 0.0; }
-	  else {
-	    psi_local[index] = Amp*cos(q0*dz*
-	  			       sqrt(pow((bE/aE)*(ds-121),2)+zs*zs)); }   // - 128
+    // 	  // Regular R = 128 FC
+    // 	  if (sqrt(pow((ds-78)/aE,2)+pow(zs/bE,2)) > 1) {   // - 128
+    // 	    psi_local[index] = 0.0; }
+    // 	  else {
+    // 	    psi_local[index] = Amp*cos(q0*dz*
+    // 	  			       sqrt(pow((bE/aE)*(ds-78),2)+zs*zs)); }   // - 128
 
-	  // Modified R = 64 FC
-	  // if (sqrt(pow((ds-64)/aE,2)+pow(zs/bE,2)) > 1) {
-	  //   psi_local[index] = 0.0; }
-	  // else {
-	  //   psi_local[index] = Amp*cos(q0*dz*
-	  // 			       sqrt(pow((bE/aE)*(ds-64),2)+zs*zs)); } 
+    // 	  // Modified R = 64 FC
+    // 	  // if (sqrt(pow((ds-64)/aE,2)+pow(zs/bE,2)) > 1) {
+    // 	  //   psi_local[index] = 0.0; }
+    // 	  // else {
+    // 	  //   psi_local[index] = Amp*cos(q0*dz*
+    // 	  // 			       sqrt(pow((bE/aE)*(ds-64),2)+zs*zs)); } 
 	  
-        }
-        else { psi_local[index] = 0.0; }
-      }}
-    } // close IC assign
+    //     }
+    //     else { psi_local[index] = 0.0; }
+    //   }}
+    // } // close IC assign
 
     
     

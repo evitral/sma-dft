@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name="144w17"
-#SBATCH --output="144w17.%j.out"
+#SBATCH -J flat100to1e0d5
+#SBATCH -o flat100to1e0d5.%j.out
 #SBATCH --partition=shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
 #SBATCH --mem=80G
 #SBATCH --export=ALL
-#SBATCH -t 48:00:00
+#SBATCH -t 24:00:00
 #SBATCH -A umn120
 
 echo "-------------------------------------------------------------------------"
@@ -16,18 +16,15 @@ echo "Environment for building and running applications with Intel compiler and 
 #module purge
 
 #Load modules for Intel & MPI
-module load cpu/0.15.4
-module load intel/19.1.1.217
-module load mvapich2/2.3.4
-module load slurm
-module load fftw/3.3.8
+module load intel
+module load mvapich2_ib fftw
 #module list
 #cd /home/evitral/sma-dft/quasi/
 
 echo " "
 echo "-------------------------------------------------------------------------"
 echo "Application with double precision MPI parallel FFTW 3.3"
-#export BUILD=/opt/fftw/3.3.8/intel/mvapich2_ib
+export BUILD=/opt/fftw/3.3.8/intel/mvapich2_ib
 export LIBS="-lfftw3_mpi -lfftw3 -lm -Wall -std=c++11"
-mpicxx -O3 -o compressible/compressible-channel compressible/compressible-channel.cpp $LIBS
-srun -n 16 ./compressible/compressible-channel 10000 850 144 0 > /expanse/lustre/projects/umn120/evitral/substrate/c-144w17.out
+mpicxx -I $BUILD/include -O3 -o compressible/compressible compressible/compressible.cpp -L $BUILD/lib $LIBS
+ibrun -np 16 ./compressible/compressible 1 500 140 0 > /oasis/scratch/comet/evitral/temp_project/compressible/test.out

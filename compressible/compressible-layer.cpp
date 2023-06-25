@@ -201,9 +201,9 @@ int main(int argc, char* argv[]) {
 
   std::string strLoad2;  
   
-  std::string strLoad = "/expanse/lustre/projects/umn120/evitral/substrate/channel-layer2-fc120-seed/save1/";
+  std::string strLoad = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty6-fc124/save1/";
 
-  std::string strSave = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty4-fc124/save/";
+  std::string strSave = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty7-fc124/save/";
 	
   //  strLoad += argv[1] + std::string("-e0d") + argv[2] 
   //  + std::string("/save/");
@@ -217,7 +217,7 @@ int main(int argc, char* argv[]) {
 
   std::ofstream *swt_output;
 
-  std::string strBox = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty4-fc124/";
+  std::string strBox = "/expanse/lustre/projects/umn120/evitral/substrate/channel-penalty7-fc124/";
 
   //  strBox += argv[1] + std::string("-e0d") + argv[2] 
   //  + std::string("/");
@@ -229,7 +229,7 @@ int main(int argc, char* argv[]) {
   const int stepSave = 10; // 4 or 10
   const int divvSwitch = 200; // 100 or 200
   const int rhoUP = 16; // moves rho up so that interface doesnt get stuck when sintering
-  const int xPert = 24; // x perturbation when loading IC, also epsilon
+  const int xPert = 12; // was 24, x perturbation when loading IC, also epsilon
   
 /* ptrdiff_t: integer type, optimizes large transforms 64bit machines */
 
@@ -266,7 +266,7 @@ int main(int argc, char* argv[]) {
 
   double nu = atof(argv[1]);
   double Amp = sqrt((3*beta+sqrt(9*beta*beta+40*ep*gamma))/5);//1.34164; 
-  double rho_0 = 1.0; // 0.01
+  double rho_0 = 0.01; // 0.01
   double rho_1;
   double kp = (1-rho_0)/Amp; // 0.3755 for rho_s = 1, with rho_a = 0.5
   double rho_s = kp*Amp+rho_0;
@@ -628,7 +628,7 @@ int main(int argc, char* argv[]) {
 
 	if (k < xPert) {
 	  //ep_layer_local[index] = (0.4*pow((j-Ny/2+0.5)/(Ny/2),2)+0.6)*cos(M_PI*k/(2*xPert));
-	  ep_layer_local[index] = 0.6*cos(M_PI*k/(2*xPert));	  
+	  ep_layer_local[index] = 0.6*cos(M_PI*k/(2*xPert));  
 	} // (-ep + 1)
 	
        // if (k < xPert) {
@@ -2636,7 +2636,7 @@ int main(int argc, char* argv[]) {
 	   
       // Nl_local[index] = Nl_local[index]+2.0*trans_local[index]*cos(M_PI*k/(2*xPert));
 
-      Nl_local[index] = Nl_local[index]+(2.0*pow((j-Ny/2+0.5)/(Ny/2),2)+2.0)*trans_local[index]*cos(M_PI*k/(2*xPert));
+      Nl_local[index] = Nl_local[index]+(0.0*pow((j-Ny/2)/(Ny/2),2)+4.0)*trans_local[index]*cos(M_PI*k/(2*xPert));
       
     }}}
     //------------------------------------
